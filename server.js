@@ -2,6 +2,8 @@
  * Node.js Backend Server
  * เชื่อมต่อระหว่าง Live Chat และ Dialogflow
  */
+require('dotenv').config();
+
 const cors = require('cors');
 const { SessionsClient } = require('@google-cloud/dialogflow');
 const { struct } = require('pb-util');
@@ -26,10 +28,9 @@ app.use(express.json());
 
 // ตั้งค่า Dialogflow
 const sessionClient = new SessionsClient({
-  keyFilename: './dialogflow-credentials.json', // ไฟล์ credentials ของ Dialogflow
-  projectId: 'my-project-test-dialog-flow', // Project ID ของคุณใน Dialogflow
+  keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+  projectId: process.env.DIALOGFLOW_PROJECT_ID,
 });
-
 // สร้างตัวแปรสำหรับเก็บข้อมูลแต่ละขั้นตอน โดยใช้ sessionId เป็น key
 const sessionData = {};
 
@@ -76,7 +77,7 @@ app.post('/api/dialogflow', async (req, res) => {
 
     // สร้าง session path
     const sessionPath = sessionClient.projectAgentSessionPath(
-      'my-project-test-dialog-flow', // Project ID ของคุณใน Dialogflow
+      'living-ai-chat-bfcg', // Project ID ของคุณใน Dialogflow
       currentSessionId
     );
 
