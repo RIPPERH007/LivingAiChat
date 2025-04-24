@@ -3,6 +3,9 @@
  * ระบบแชทสด สำหรับการสนทนาอัจฉริยะ
  */
 (function () {
+    // เชื่อมต่อ Socket
+    const socket = io('http://localhost:3000');
+
     // การกำหนดองค์ประกอบ DOM
     const elements = {
         chatToggleBtn: document.getElementById('chat-toggle-btn'),
@@ -20,24 +23,96 @@
         sessionId: generateSessionId()
     };
 
+    // เชื่อมต่อ Socket และลงทะเบียน Session
+    socket.on('connect', () => {
+        socket.emit('user-connect', chatState.sessionId);
+    });
+
     // การลงทะเบียนตัวจัดการเหตุการณ์
     function setupEventListeners() {
-        elements.chatToggleBtn.addEventListener('click', toggleChat);
-        elements.chatMinimizeBtn.addEventListener('click', toggleChat);
         elements.chatSendBtn.addEventListener('click', sendMessage);
 
-        // จัดการการส่งข้อความด้วย Enter
         elements.chatInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 sendMessage();
             }
         });
 
-        // เพิ่ม Event Listener สำหรับชิป
+        if (elements.chatToggleBtn) {
+                   elements.chatToggleBtn.addEventListener('click', () => {
+                       toggleChat(true);
+                   });
+               }
+
+               // ตรวจสอบและเพิ่ม Event Listener สำหรับปุ่มปิดแชท
+               if (elements.chatMinimizeBtn) {
+                   elements.chatMinimizeBtn.addEventListener('click', () => {
+                       toggleChat(false);
+                   });
+               }
         const chips = document.querySelectorAll('.chip');
         chips.forEach(chip => {
             chip.addEventListener('click', handleChipClick);
         });
+    }
+
+    // รับข้อความจากแอดมิน
+    socket.on('new-admin-message', (data) => {
+        addMessage('admin', data.message, data.adminName);
+    });
+
+    // ส่งข้อความ
+    function sendMessage() {
+        const message = elements.chatInput.value.trim();
+        if (!message) return;
+
+        addMessage('user', message);
+
+        // ส่งข้อความไปยัง Dialogflow
+        sendToDialogflow(message, chatState.sessionId)
+            .then(handleDialogflowResponse)
+            .catch(handleDialogflowError);
+
+        // ส่งข้อความผ่าน Socket
+        socket.emit('user-message', {
+            sessionId: chatState.sessionId,
+            message: message,
+            timestamp: Date.now()
+        });
+
+        elements.chatInput.value = '';
+    }
+
+    // จัดการการตอบกลับจาก Dialogflow
+    function handleDialogflowResponse(response) {
+        // แสดงข้อความบอท
+        addMessage('bot', response.message);
+
+        // ส่งข้อมูลผ่าน Socket เพื่อให้แอดมินทราบ
+        socket.emit('bot-message', {
+            sessionId: chatState.sessionId,
+            message: response.message,
+            payload: response.payload
+        });
+
+        // จัดการ Rich Content
+        if (response.payload) {
+            const richContentHtml = processRichContent(response.payload);
+            if (richContentHtml) {
+                const messageElement = document.createElement('div');
+                messageElement.className = 'message bot-message';
+                messageElement.innerHTML = `
+                    <div class="message-avatar">
+                        <img src="assets/icons/chat-avatar.jpg" alt="Bot">
+                    </div>
+                    <div class="message-content">
+                        ${richContentHtml}
+                    </div>
+                `;
+                elements.chatMessages.appendChild(messageElement);
+                scrollToBottom();
+            }
+        }
     }
 
     // จัดการการคลิกชิป
@@ -55,17 +130,26 @@
     }
 
     // สลับหน้าต่างแชท
-    function toggleChat() {
-        chatState.isOpen = !chatState.isOpen;
-        elements.chatWindow.style.display = chatState.isOpen ? 'flex' : 'none';
-        elements.chatToggleBtn.style.display = chatState.isOpen ? 'none' : 'flex';
 
-        if (chatState.isOpen) {
-            elements.chatWindow.classList.add('fade-in');
-            // โฟกัสที่ช่องข้อความเมื่อเปิดแชท
-            elements.chatInput.focus();
+    function toggleChat(openChat) {
+            // อัปเดตสถานะการเปิด/ปิด
+            chatState.isOpen = openChat;
+
+            // แสดง/ซ่อนหน้าต่างแชท
+            if (elements.chatWindow) {
+                elements.chatWindow.style.display = chatState.isOpen ? 'flex' : 'none';
+            }
+
+            // ซ่อน/แสดงปุ่มเปิดแชท
+            if (elements.chatToggleBtn) {
+                elements.chatToggleBtn.style.display = chatState.isOpen ? 'none' : 'flex';
+            }
+
+            // เพิ่มเอฟเฟกต์การแสดงผล
+            if (chatState.isOpen) {
+                elements.chatWindow.classList.add('fade-in');
+            }
         }
-    }
 
     // ส่งข้อความ
     function sendMessage() {
@@ -432,6 +516,10 @@
         setupEventListeners();
         // ถ้าต้องการเปิดแชทโดยอัตโนมัติเมื่อโหลดหน้า สามารถเพิ่มโค้ดด้านล่างนี้
         // setTimeout(toggleChat, 2000);
+
+        if (elements.chatWindow) {
+            elements.chatWindow.style.display = 'none';
+        }
     }
 
 
