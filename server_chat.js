@@ -5,99 +5,21 @@
  */
 require('dotenv').config();
 
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
 const cors = require('cors');
-const bodyParser = require('body-parser');
 const { SessionsClient } = require('@google-cloud/dialogflow');
 const { struct } = require('pb-util');
 const uuid = require('uuid');
-const path = require('path');
+const express = require('express');
+const bodyParser = require('body-parser');
 const webhookController = require('./controllers/webhookController');
 
 const app = express();
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: ["http://localhost:3000", "http://localhost:4000"],
-    methods: ["GET", "POST"]
-  }
-});
 
-// Middleware เดิม
+// Middleware
 app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cors());
 app.use(express.json());
-
-// เก็บ Socket Connections สำหรับ Chat
-const chatSockets = {
-  sessions: {},      // เก็บ session socket
-  adminSockets: {},  // เก็บ admin socket
-  conversations: {}  // เก็บประวัติการสนทนา
-};
-
-// การจัดการ Socket Connection สำหรับ Chat
-io.on('connection', (socket) => {
-  console.log('มีการเชื่อมต่อ Socket ใหม่ (Chat Server)');
-
-  // เมื่อผู้ใช้เชื่อมต่อ
-  socket.on('user-connect', (sessionId) => {
-    chatSockets.sessions[sessionId] = socket.id;
-    console.log(`ผู้ใช้เชื่อมต่อ: ${sessionId}`);
-  });
-
-  // เมื่อแอดมินเชื่อมต่อ
-  socket.on('admin-connect', (adminId) => {
-    chatSockets.adminSockets[adminId] = socket.id;
-    console.log(`แอดมินเชื่อมต่อ: ${adminId}`);
-  });
-
-  // รับข้อความจากผู้ใช้
-  socket.on('user-message', (data) => {
-    console.log('ได้รับข้อความจากผู้ใช้:', data);
-
-    // ส่งการแจ้งเตือนไปยังแอดมิน
-    Object.values(chatSockets.adminSockets).forEach(adminSocketId => {
-      io.to(adminSocketId).emit('new-user-message', {
-        sessionId: data.sessionId,
-        message: data.message,
-        timestamp: data.timestamp
-      });
-    });
-  });
-
-  // รับข้อความจากแอดมิน
-  socket.on('admin-message', (data) => {
-    console.log('ได้รับข้อความจากแอดมิน:', data);
-
-    // ส่งข้อความไปยังผู้ใช้
-    const userSocketId = chatSockets.sessions[data.sessionId];
-    if (userSocketId) {
-      io.to(userSocketId).emit('new-admin-message', {
-        message: data.message,
-        adminName: data.adminName,
-        timestamp: data.timestamp
-      });
-    }
-  });
-
-  // การยกเลิกการเชื่อมต่อ
-  socket.on('disconnect', () => {
-    // ลบ socket ที่หมดอายุ
-    Object.keys(chatSockets.sessions).forEach(sessionId => {
-      if (chatSockets.sessions[sessionId] === socket.id) {
-        delete chatSockets.sessions[sessionId];
-      }
-    });
-
-    Object.keys(chatSockets.adminSockets).forEach(adminId => {
-      if (chatSockets.adminSockets[adminId] === socket.id) {
-        delete chatSockets.adminSockets[adminId];
-      }
-    });
-  });
-});
 
 // Webhook Route
 app.post('/webhook', webhookController.handleWebhook);
