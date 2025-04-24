@@ -6,6 +6,7 @@
     <title>Live Chat Bot</title>
     <link rel="stylesheet" href="css/chat.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500&family=Sarabun:wght@300;400;500&display=swap" rel="stylesheet">
 </head>
 <body>
 <div class="page-content">
@@ -25,23 +26,17 @@
     <div id="chat-window" class="chat-window">
         <!-- Chat Header -->
         <div class="chat-header">
-            <div class="chat-back-btn">
-                <i class="fa-solid fa-arrow-left"></i>
-            </div>
-            <div class="chat-header-dots">
-                <i class="fa-solid fa-ellipsis"></i>
-            </div>
             <div class="chat-header-info">
                 <div class="chat-logo">
-                    <img src="assets/icons/chat-logo.png" alt="Live Chat Bot">
+                    <img src="assets/icons/chat-avatar.jpg" alt="MyProp ChatBot">
                 </div>
                 <div class="chat-title">
-                    <h3>LiveChat Bot</h3>
-                    <p>Let's chat</p>
+                    <h3>MyProp ChatBot</h3>
+                    <p>Online</p>
                 </div>
             </div>
             <div class="chat-minimize-btn">
-                <i class="fa-solid fa-minus"></i>
+                <i class="fa-solid fa-times"></i>
             </div>
         </div>
 
@@ -50,21 +45,43 @@
             <!-- Bot welcome message -->
             <div class="message bot-message">
                 <div class="message-avatar">
-                    <img src="assets/icons/bot-avatar.jpg" alt="Bot">
+                    <img src="assets/icons/chat-avatar.jpg" alt="Bot">
                 </div>
-                <div class="message-content">
-                    <p>Engage your customers effortlessly with our powerful LiveChat tools. Interested in exploring more?</p>
+                <div class="message-content welcome-message">
+                    <p>🙏สวัสดีครับ ผมคือผู้ช่วยอัจฉริยะของ My Property พร้อมช่วยคุณหา ซื้อ ขาย หรือเช่าสินทรัพย์ แบบง่าย ๆ สนใจเรื่องไหน ถามกันได้เลย!</p>
                 </div>
             </div>
-            <!-- Messages will be added here dynamically -->
+
+            <!-- Quick Reply Chips -->
+            <div class="message bot-message">
+                <div class="message-avatar">
+                    <img src="assets/icons/chat-avatar.jpg" alt="Bot">
+                </div>
+                <div class="message-content">
+                    <div class="chips-container">
+                        <div class="chip" data-text="หาที่อยู่ให้เช่าฟรี">หาที่อยู่ให้เช่าฟรี</div>
+                        <div class="chip" data-text="ฉัน 2 ล้านซื้ออะไรได้บ้าง">ฉัน 2 ล้านซื้ออะไรได้บ้าง</div>
+                        <div class="chip" data-text="ที่ผู้สูงอายุอาศัยอยู่ได้">ที่อยู่ผู้สูงอายุอาศัยอยู่ได้</div>
+                        <div class="chip" data-text="หาที่ใกล้รถไฟฟ้า">หาที่ใกล้รถไฟฟ้า</div>
+                        <div class="chip" data-text="Do you speak English?">Do you speak English?</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- User message example -->
+            <div class="message user-message">
+                <div class="message-content">
+                    <p>Can foreigners buy property in Thailand?</p>
+                </div>
+                <div class="message-avatar">
+                    <i class="fa-solid fa-user"></i>
+                </div>
+            </div>
         </div>
 
         <!-- Chat Input -->
         <div class="chat-input-container">
-            <div id="chat-now-btn" class="chat-now-btn">
-                <button>Chat now</button>
-            </div>
-            <div id="chat-input-area" class="chat-input-area hidden">
+            <div id="chat-input-area" class="chat-input-area">
                 <input type="text" id="chat-input" placeholder="พิมพ์ข้อความของคุณ...">
                 <button id="chat-send-btn">
                     <i class="fa-solid fa-paper-plane"></i>

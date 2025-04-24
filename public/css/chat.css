@@ -1,14 +1,15 @@
-/* CSS สำหรับ Live Chat Widget */
+/* CSS สำหรับ Live Chat Widget (แบบปรับปรุง) */
 :root {
-    --chat-primary: #1a73e8;
+    --chat-primary: #4a4a4a;
     --chat-secondary: #f5f5f5;
     --chat-text: #333;
     --chat-border: #e1e1e1;
     --chat-shadow: rgba(0, 0, 0, 0.1);
-    --chat-bot-bg: #f5f5f5;
-    --chat-user-bg: #e7f1ff;
-    --property-badge: #4CAF50;
-    --property-price: #2196f3;
+    --chat-bot-bg: #ffffff;
+    --chat-user-bg: #ffffff;
+    --chat-accent: #2bbd7e;
+    --chat-header-bg: #4b3f3a;
+    --chat-bubble-color: #ffffff;
 }
 
 /* Reset และ Global Styles */
@@ -19,16 +20,9 @@
 }
 
 body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-family: 'Prompt', 'Sarabun', 'Kanit', Tahoma, sans-serif;
     line-height: 1.6;
     color: var(--chat-text);
-}
-
-/* ส่วนเนื้อหาของหน้าเว็บ */
-.page-content {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 2rem;
 }
 
 /* Live Chat Widget */
@@ -37,6 +31,7 @@ body {
     bottom: 20px;
     right: 20px;
     z-index: 1000;
+    font-family: 'Prompt', 'Sarabun', 'Kanit', sans-serif;
 }
 
 /* ปุ่มเปิด Chat */
@@ -44,7 +39,7 @@ body {
     width: 60px;
     height: 60px;
     border-radius: 50%;
-    background-color: var(--chat-primary);
+    background-color: var(--chat-accent);
     color: white;
     display: flex;
     justify-content: center;
@@ -67,10 +62,10 @@ body {
     position: fixed;
     bottom: 20px;
     right: 20px;
-    width: 360px;
-    height: 600px;
-    background-color: white;
-    border-radius: 16px;
+    width: 320px;
+    height: 480px;
+    background-color: #e9e8e4;
+    border-radius: 12px;
     box-shadow: 0 5px 15px var(--chat-shadow);
     display: flex;
     flex-direction: column;
@@ -78,104 +73,100 @@ body {
     display: none;
 }
 
-/* Chat Header */
+/* Chat Header - แบบใหม่ */
 .chat-header {
-    padding: 16px;
-    background-color: white;
-    border-bottom: 1px solid var(--chat-border);
+    padding: 12px 16px;
+    background-color: #6F6158;
+    color: white;
     display: flex;
+    align-items: center;
     position: relative;
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
 }
 
 .chat-back-btn, .chat-header-dots {
-    position: absolute;
-    top: 16px;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    cursor: pointer;
-    color: #666;
-}
-
-.chat-back-btn {
-    left: 16px;
-}
-
-.chat-header-dots {
-    right: 50px;
+    display: none; /* ซ่อนปุ่มที่ไม่จำเป็น */
 }
 
 .chat-minimize-btn {
     position: absolute;
-    top: 16px;
-    right: 16px;
+    top: 12px;
+    right: 12px;
     width: 32px;
     height: 32px;
     display: flex;
     justify-content: center;
     align-items: center;
     cursor: pointer;
-    color: #666;
+    color: white;
+    opacity: 0.8;
+    transition: opacity 0.2s;
+}
+
+.chat-minimize-btn:hover {
+    opacity: 1;
 }
 
 .chat-header-info {
     display: flex;
     align-items: center;
-    margin: 0 auto;
 }
 
 .chat-logo {
-    width: 50px;
-    height: 50px;
-    background-color: #f0f0f0;
+    width: 36px;
+    height: 36px;
+    background-color: white;
     border-radius: 50%;
     display: flex;
     justify-content: center;
     align-items: center;
-    margin-right: 12px;
+    margin-right: 10px;
     position: relative;
+    overflow: hidden;
 }
 
 .chat-logo img {
-    width: 30px;
-    height: 30px;
+    width: 36px;
+    height: 36px;
+    object-fit: cover;
 }
 
 .chat-logo::after {
     content: '';
     position: absolute;
-    top: 0;
-    right: 0;
-    width: 12px;
-    height: 12px;
+    bottom: 2px;
+    right: 2px;
+    width: 8px;
+    height: 8px;
     background-color: #4caf50;
     border-radius: 50%;
     border: 2px solid white;
 }
 
 .chat-title h3 {
-    font-size: 18px;
-    margin-bottom: 4px;
+    font-size: 16px;
+    margin-bottom: 2px;
+    font-weight: 500;
 }
 
 .chat-title p {
-    font-size: 14px;
-    color: #666;
+    font-size: 12px;
+    opacity: 0.8;
 }
 
-/* Chat Messages */
+/* Chat Messages - แบบปรับปรุง */
 .chat-messages {
     flex: 1;
     padding: 16px;
     overflow-y: auto;
+    background-color: #e9e8e4;
 }
 
 .message {
     display: flex;
     margin-bottom: 16px;
+    max-width: 85%;
 }
 
 .bot-message {
@@ -184,111 +175,93 @@ body {
 
 .user-message {
     justify-content: flex-end;
+    margin-left: auto;
 }
 
 .message-avatar {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
-    background-color: #e1e1e1;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    margin-right: 12px;
+    margin-right: 8px;
     flex-shrink: 0;
+    overflow: hidden;
 }
 
 .message-avatar img {
-    width: 24px;
-    height: 24px;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
 }
 
 .user-message .message-avatar {
-    display: none;
+    order: 2;
+    margin-right: 0;
+    margin-left: 8px;
 }
 
 .message-content {
-    max-width: 70%;
-    padding: 12px;
+    padding: 10px 12px;
     border-radius: 18px;
+    position: relative;
 }
 
 .bot-message .message-content {
     background-color: var(--chat-bot-bg);
-    border-top-left-radius: 4px;
+}
+
+.bot-message .message-content.welcome-message {
+    background-color: var(--chat-bubble-color);
+    color: #333;
 }
 
 .user-message .message-content {
     background-color: var(--chat-user-bg);
-    border-top-right-radius: 4px;
+    border: 1px solid #e0e0e0;
 }
 
 .message-content p {
     font-size: 14px;
     line-height: 1.4;
+    word-wrap: break-word;
 }
 
-.message-text {
-    margin-bottom: 8px;
-    font-size: 14px;
-}
-
-/* Bot Rich Content (for custom UI elements) */
-.rich-content {
-    margin-top: 8px;
-}
-
+/* Chips ปรับปรุง */
 .chips-container {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin-top: 8px;
+    margin-top: 10px;
 }
 
 .chip {
     background-color: white;
-    border: 1px solid var(--chat-primary);
-    color: var(--chat-primary);
+    border: 1px solid #e0e0e0;
+    color: #333;
     padding: 8px 12px;
-    border-radius: 16px;
-    font-size: 14px;
+    border-radius: 18px;
+    font-size: 13px;
     cursor: pointer;
     transition: background-color 0.2s;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
 .chip:hover {
-    background-color: rgba(26, 115, 232, 0.1);
+    background-color: #DBD7D4;
 }
 
-/* Chat Input */
+/* Chat Input - แบบปรับปรุง */
 .chat-input-container {
-    padding: 16px;
-    border-top: 1px solid var(--chat-border);
-}
-
-.chat-now-btn {
-    width: 100%;
-}
-
-.chat-now-btn button {
-    width: 100%;
     padding: 12px;
-    background-color: #212121;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    font-size: 16px;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-.chat-now-btn button:hover {
-    background-color: #000;
+    background-color: white;
+    border-top: 1px solid #eee;
 }
 
 .chat-input-area {
     display: flex;
     align-items: center;
+    background-color: #f5f5f5;
+    border-radius: 24px;
+    padding: 4px 8px 4px 16px;
 }
 
 .chat-input-area.hidden {
@@ -297,49 +270,34 @@ body {
 
 #chat-input {
     flex: 1;
-    padding: 12px;
-    border: 1px solid var(--chat-border);
-    border-radius: 24px;
+    padding: 8px 0;
+    border: none;
+    background: transparent;
     font-size: 14px;
     outline: none;
+    font-family: 'Prompt', 'Sarabun', 'Kanit', sans-serif;
 }
 
 #chat-send-btn {
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
-    background-color: var(--chat-primary);
+    background-color: var(--chat-accent);
     color: white;
     border: none;
-    margin-left: 8px;
     cursor: pointer;
     display: flex;
     justify-content: center;
     align-items: center;
+    transition: background-color 0.2s;
+}
+
+#chat-send-btn:hover {
+    background-color: #239d69;
 }
 
 #chat-send-btn i {
-    font-size: 16px;
-}
-
-/* Chat Footer */
-.chat-footer {
-    padding: 12px;
-    text-align: center;
-    color: #999;
-    font-size: 12px;
-    border-top: 1px solid var(--chat-border);
-}
-
-.chat-footer p {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.chat-footer img {
-    height: 16px;
-    margin: 0 4px;
+    font-size: 14px;
 }
 
 /* Animation */
@@ -357,388 +315,46 @@ body {
     display: none;
 }
 
-/* Styles for Rich Content List Items */
-.rich-content.list-container {
+/* Improved Chat Now Button */
+.chat-now-btn button {
     width: 100%;
-}
-
-.list-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 16px;
-    border-bottom: 1px solid #e0e0e0;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
-}
-
-.list-item:hover {
-    background-color: #f5f5f5;
-}
-
-.list-item-content {
-    flex-grow: 1;
-    margin-right: 10px;
-}
-
-.list-item-title {
-    font-weight: 600;
-    color: #333;
-    margin-bottom: 4px;
-}
-
-.list-item-subtitle {
-    font-size: 0.875rem;
-    color: #666;
-}
-
-.list-item-icon {
-    color: #888;
-    display: flex;
-    align-items: center;
-}
-
-.list-item-icon svg {
-    width: 20px;
-    height: 20px;
-}
-
-/* Remove last border */
-.list-item:last-child {
-    border-bottom: none;
-}
-/* CSS สำหรับแสดงผล Property Card แบบใหม่ตามรูปแบบที่ต้องการ */
-/* =============================================
-   PROPERTY LIST STYLES - แบบใหม่ตามรูปภาพ
-   ============================================= */
-
-.property-list {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    width: 100%;
-    max-width: 100%;
-    margin-top: 8px;
-}
-
-.property-card {
-    background-color: white;
-    border-radius: 8px;
-    overflow: hidden;
-    width: 100%;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    position: relative;
-    cursor: pointer;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.property-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-}
-
-/* รูปภาพของอสังหาริมทรัพย์ */
-.property-image {
-    width: 100%;
-    height: 180px;
-    position: relative;
-}
-
-.property-image img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-
-/* ป้าย "ขาย" */
-.property-badge {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    background-color: var(--property-badge, #4CAF50);
+    padding: 10px;
+    background-color: var(--chat-accent);
     color: white;
-    padding: 3px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: bold;
-}
-
-/* วันที่และจำนวนการดู */
-.property-date-views {
-    position: absolute;
-    bottom: 10px;
-    right: 10px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.property-date, .property-views {
-    background-color: rgba(0, 0, 0, 0.6);
-    color: white;
-    padding: 3px 8px;
-    border-radius: 4px;
-    font-size: 11px;
-}
-
-.property-views i {
-    margin-right: 3px;
-}
-
-/* ข้อมูลของอสังหาริมทรัพย์ */
-.property-info {
-    padding: 12px;
-}
-
-.property-price {
-    font-size: 18px;
-    font-weight: bold;
-    color: var(--property-price, #2196f3);
-    margin-bottom: 6px;
-}
-
-.property-title {
-    font-size: 14px;
-    font-weight: 500;
-    color: #333;
-    margin-bottom: 6px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    line-height: 1.3;
-    height: 2.6em;
-}
-
-.property-location {
-    display: flex;
-    align-items: center;
-    font-size: 13px;
-    color: #757575;
-    margin-bottom: 10px;
-}
-
-.property-location i {
-    color: #f44336;
-    margin-right: 6px;
-    font-size: 13px;
-}
-
-/* สิ่งอำนวยความสะดวก */
-.property-amenities {
-    display: flex;
-    flex-wrap: wrap;
-    border-top: 1px solid #eee;
-    padding-top: 10px;
-}
-
-.amenity-item {
-    display: flex;
-    align-items: center;
-    width: 50%;
-    font-size: 13px;
-    color: #666;
-    margin-bottom: 6px;
-}
-
-.amenity-item i {
-    margin-right: 6px;
-    color: var(--property-price, #2196f3);
-    width: 14px;
-    text-align: center;
-}
-
-/* สำหรับการแสดงผลบนอุปกรณ์มือถือ */
-@media (max-width: 480px) {
-    .property-image {
-        height: 160px;
-    }
-
-    .property-price {
-        font-size: 16px;
-    }
-
-    .property-title {
-        font-size: 13px;
-        -webkit-line-clamp: 1;
-        height: 1.3em;
-    }
-
-    .property-location {
-        font-size: 12px;
-    }
-
-    .amenity-item {
-        font-size: 12px;
-    }
-
-    .property-badge {
-        font-size: 11px;
-        padding: 2px 6px;
-    }
-
-    .property-date-views {
-        bottom: 6px;
-        right: 6px;
-        gap: 4px;
-    }
-
-    .property-date, .property-views {
-        padding: 2px 6px;
-        font-size: 10px;
-    }
-
-    .property-amenities {
-        padding-top: 8px;
-    }
-
-    .amenity-item {
-        margin-bottom: 4px;
-    }
-
-    .property-list {
-        gap: 12px;
-    }
-
-    .property-info {
-        padding: 10px;
-    }
-}
-
-/* ปรับแต่งเพิ่มเติมสำหรับอุปกรณ์หน้าจอเล็กมาก */
-@media (max-width: 360px) {
-    .property-image {
-        height: 140px;
-    }
-
-    .amenity-item {
-        width: 100%;
-        margin-bottom: 2px;
-    }
-
-    .property-price {
-        font-size: 15px;
-        margin-bottom: 4px;
-    }
-
-    .property-title {
-        margin-bottom: 4px;
-    }
-
-    .property-location {
-        margin-bottom: 6px;
-    }
-}
-
-/* Animation เมื่อโหลดรายการใหม่ */
-@keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.property-card {
-    animation: fadeInUp 0.3s ease-out;
-}
-
-/* เพิ่มความสวยงามเมื่อกด (active state) */
-.property-card:active {
-    transform: scale(0.98);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-}
-/* ปุ่มสวยๆ สำหรับ Rich Content */
-.button-container {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 12px;
-}
-
-.chat-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 100px;
-    padding: 10px 20px;
-    border-radius: 8px;
-    font-weight: 500;
-    font-size: 14px;
-    cursor: pointer;
-    transition: all 0.2s ease;
     border: none;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-    text-align: center;
+    border-radius: 24px;
+    font-size: 15px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    font-family: 'Prompt', 'Sarabun', 'Kanit', sans-serif;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
-.chat-btn i {
-    margin-right: 8px;
-    font-size: 14px;
+.chat-now-btn button:hover {
+    background-color: #239d69;
 }
 
-/* สีพื้นฐาน */
-.chat-btn-primary {
-    background-color: #1a73e8;
-    color: white;
+/* หน้าเว็บทั่วไป */
+.page-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
 }
 
-.chat-btn-primary:hover {
-    background-color: #1765cc;
-    box-shadow: 0 4px 8px rgba(26, 115, 232, 0.2);
-}
+/* Media queries for mobile */
+@media (max-width: 480px) {
+    .chat-window {
+        width: 300px;
+        height: 450px;
+        bottom: 10px;
+        right: 10px;
+    }
 
-/* สีเขียว */
-.chat-btn-success {
-    background-color: #34a853;
-    color: white;
-}
+    .chat-messages {
+        padding: 12px;
+    }
 
-.chat-btn-success:hover {
-    background-color: #2d9249;
-    box-shadow: 0 4px 8px rgba(52, 168, 83, 0.2);
-}
-
-/* สีแดง */
-.chat-btn-danger {
-    background-color: #ea4335;
-    color: white;
-}
-
-.chat-btn-danger:hover {
-    background-color: #d33426;
-    box-shadow: 0 4px 8px rgba(234, 67, 53, 0.2);
-}
-
-/* สีส้ม */
-.chat-btn-warning {
-    background-color: #fbbc05;
-    color: #333;
-}
-
-.chat-btn-warning:hover {
-    background-color: #f0b400;
-    box-shadow: 0 4px 8px rgba(251, 188, 5, 0.2);
-}
-
-/* สีเทา/ขาว */
-.chat-btn-light {
-    background-color: #f8f9fa;
-    color: #333;
-    border: 1px solid #e0e0e0;
-}
-
-.chat-btn-light:hover {
-    background-color: #e9ecef;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
-}
-
-/* เมื่อกด */
-.chat-btn:active {
-    transform: translateY(1px);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    .message-content p {
+        font-size: 13px;
+    }
 }
