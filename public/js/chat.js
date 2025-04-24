@@ -434,6 +434,76 @@
         // setTimeout(toggleChat, 2000);
     }
 
+
+// ตรวจสอบว่ามีข้อความจากแอดมินหรือไม่
+const checkAdminMessages = setInterval(async () => {
+  if (!chatState.sessionId) return;
+
+  try {
+    // ดึงข้อมูลการสนทนา
+    const response = await fetch(`/api/conversations/${chatState.sessionId}`);
+    if (!response.ok) return;
+
+    const data = await response.json();
+    if (!data.success) return;
+
+    const conversation = data.conversation;
+    const messages = conversation.messages || [];
+
+    // กรองเฉพาะข้อความจากแอดมินที่ยังไม่ได้แสดง
+    const adminMessages = messages.filter(msg =>
+      msg.sender === 'admin' &&
+      !document.querySelector(`[data-message-id="${msg.timestamp}"]`)
+    );
+
+    // แสดงข้อความจากแอดมิน
+    adminMessages.forEach(msg => {
+      addMessage('admin', msg.text, msg.timestamp);
+    });
+  } catch (error) {
+    console.error('Error checking admin messages:', error);
+  }
+}, 5000); // ตรวจสอบทุก 5 วินาที
+
+// ปรับปรุงฟังก์ชัน addMessage ให้รองรับข้อความจากแอดมิน
+function addMessage(sender, text, messageId) {
+  const messageElement = document.createElement('div');
+  messageElement.className = `message ${sender}-message`;
+  messageElement.setAttribute('data-message-id', messageId || Date.now());
+
+  if (sender === 'user') {
+    messageElement.innerHTML = `
+      <div class="message-content">
+        <p>${escapeHTML(text)}</p>
+      </div>
+      <div class="message-avatar">
+        <i class="fa-solid fa-user"></i>
+      </div>
+    `;
+  } else if (sender === 'admin') {
+    messageElement.innerHTML = `
+      <div class="message-avatar">
+        <img src="assets/icons/admin-avatar.jpg" alt="Admin">
+      </div>
+      <div class="message-content admin-message">
+        <p>${escapeHTML(text)}</p>
+        <small>แอดมิน</small>
+      </div>
+    `;
+  } else {
+    messageElement.innerHTML = `
+      <div class="message-avatar">
+        <img src="assets/icons/chat-avatar.jpg" alt="Bot">
+      </div>
+      <div class="message-content">
+        <p>${escapeHTML(text)}</p>
+      </div>
+    `;
+  }
+
+  elements.chatMessages.appendChild(messageElement);
+  scrollToBottom();
+}
     // เรียกใช้การเริ่มต้นเมื่อโหลดหน้าเว็บ
     document.addEventListener('DOMContentLoaded', init);
 })();

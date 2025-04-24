@@ -358,3 +358,15 @@ body {
         font-size: 13px;
     }
 }
+/* ข้อความจากแอดมิน */
+.admin-message {
+  background-color: #6F6158 !important;
+  color: white;
+}
+
+.admin-message small {
+  font-size: 10px;
+  opacity: 0.8;
+  display: block;
+  margin-top: 4px;
+}

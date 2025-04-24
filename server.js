@@ -44,41 +44,31 @@ app.post('/api/dialogflow', async (req, res) => {
     const { query, sessionId, userInfo } = req.body;
     const currentSessionId = sessionId || uuid.v4();
 
-    // ตรวจสอบและสร้างข้อมูลสำหรับ session นี้ถ้ายังไม่มี
-    if (!sessionData[currentSessionId]) {
-      // สร้างข้อมูล session ใหม่
-      sessionData[currentSessionId] = {
-        step1: null,
-        step2: null,
-        step3: null,
-        step4: null,
-        currentStep: null,
-        userInfo: {
-          name: null,
-          email: null,
-          phone: null,
-          timestamp: Date.now()
-        }
-      };
+   // ตรวจสอบและสร้างข้อมูลสำหรับ session นี้ถ้ายังไม่มี
+   if (!sessionData[currentSessionId]) {
+     sessionData[currentSessionId] = {
+       step1: null,
+       step2: null,
+       step3: null,
+       step4: null,
+       currentStep: null,
+       userInfo: {
+         name: null,
+         email: null,
+         phone: null,
+         timestamp: Date.now()
+       }
+     };
+   }
 
-      // สร้างข้อมูลการสนทนาใหม่
-      conversations[currentSessionId] = {
-        messages: [],
-        status: 'waiting', // waiting, answered, closed
-        lastActivity: Date.now(),
-        agentId: null // ID ของแอดมินที่กำลังตอบ (ถ้ามี)
-      };
-    }
-
-    // อัปเดตข้อมูลผู้ใช้ถ้ามีการส่งมา
-    if (userInfo) {
-      sessionData[currentSessionId].userInfo = {
-        ...sessionData[currentSessionId].userInfo,
-        ...userInfo,
-        timestamp: sessionData[currentSessionId].userInfo.timestamp
-      };
-    }
-
+   // อัปเดตข้อมูลผู้ใช้ถ้ามีการส่งมา
+   if (userInfo) {
+     sessionData[currentSessionId].userInfo = {
+       ...sessionData[currentSessionId].userInfo,
+       ...userInfo,
+       timestamp: sessionData[currentSessionId].userInfo.timestamp
+     };
+   }
     // สร้าง session path
     const sessionPath = sessionClient.projectAgentSessionPath(
       process.env.DIALOGFLOW_PROJECT_ID,
@@ -102,22 +92,29 @@ app.post('/api/dialogflow', async (req, res) => {
     const detectedIntent = result.intent ? result.intent.displayName : 'ไม่พบ intent';
 
     // บันทึกข้อความลงในประวัติการสนทนา
-    conversations[currentSessionId].messages.push({
-      sender: 'user',
-      text: query,
-      timestamp: Date.now()
-    });
+   if (!conversations[currentSessionId]) {
+     conversations[currentSessionId] = {
+       messages: [],
+       status: 'waiting',
+       lastActivity: Date.now()
+     };
+   }
 
-    conversations[currentSessionId].messages.push({
-      sender: 'bot',
-      text: result.fulfillmentText || 'ไม่เข้าใจคำถาม กรุณาลองใหม่อีกครั้ง',
-      intent: detectedIntent,
-      confidence: result.intentDetectionConfidence,
-      timestamp: Date.now()
-    });
+   conversations[currentSessionId].messages.push({
+     sender: 'user',
+     text: query,
+     timestamp: Date.now()
+   });
 
-    // อัปเดตเวลากิจกรรมล่าสุด
-    conversations[currentSessionId].lastActivity = Date.now();
+   conversations[currentSessionId].messages.push({
+     sender: 'bot',
+     text: result.fulfillmentText || 'ไม่เข้าใจคำถาม กรุณาลองใหม่อีกครั้ง',
+     intent: detectedIntent,
+     timestamp: Date.now()
+   });
+
+   // อัปเดตเวลากิจกรรมล่าสุด
+   conversations[currentSessionId].lastActivity = Date.now();
 
     // แสดงข้อมูลดีบั๊กเพื่อช่วยในการพัฒนา
     console.log('Query:', query);
@@ -156,6 +153,7 @@ app.post('/api/dialogflow', async (req, res) => {
       // ถ้าผู้ใช้ต้องการคุยกับเจ้าหน้าที่
       conversations[currentSessionId].status = 'waiting';
       // ส่งการแจ้งเตือนไปยังแอดมิน (สามารถเพิ่มโค้ดส่งการแจ้งเตือนที่นี่)
+      console.log('User requested to speak with an agent. Session ID:', currentSessionId);
     } else if (detectedIntent === 'step5') {
       const nullSteps = [];
       if (sessionData[currentSessionId].step1 === null) nullSteps.push('step1');
@@ -476,10 +474,213 @@ app.get('/api/test', (req, res) => {
 app.use(express.static('public'));
 
 /**
- * Admin Dashboard Route
+ * ตั้งค่า route สำหรับหน้า admin
  */
 app.get('/admin', (req, res) => {
-  res.sendFile(__dirname + '/admin-dashboard.html');
+  res.sendFile(path.join(__dirname, 'admin-dashboard.html'));
+});
+
+
+/**
+ * API สำหรับส่งข้อความจากแอดมิน
+ */
+app.post('/api/admin/message', async (req, res) => {
+  try {
+    const { sessionId, message, adminId, adminName } = req.body;
+
+    // ตรวจสอบว่ามี session นี้หรือไม่
+    if (!sessionData[sessionId]) {
+      return res.status(404).json({
+        success: false,
+        message: 'ไม่พบข้อมูล session'
+      });
+    }
+
+    // ตรวจสอบว่ามีข้อมูลการสนทนาหรือไม่
+    if (!conversations[sessionId]) {
+      conversations[sessionId] = {
+        messages: [],
+        status: 'answered',
+        lastActivity: Date.now(),
+        agentId: adminId
+      };
+    }
+
+    // บันทึกข้อความจากแอดมินลงในประวัติการสนทนา
+    conversations[sessionId].messages.push({
+      sender: 'admin',
+      text: message,
+      adminId,
+      adminName,
+      timestamp: Date.now()
+    });
+
+    // อัปเดตสถานะการสนทนา
+    conversations[sessionId].status = 'answered';
+    conversations[sessionId].lastActivity = Date.now();
+    conversations[sessionId].agentId = adminId;
+
+    // ส่งข้อมูลกลับไป
+    res.json({
+      success: true,
+      message: 'ส่งข้อความสำเร็จ',
+      conversation: {
+        messages: conversations[sessionId].messages,
+        status: conversations[sessionId].status
+      }
+    });
+  } catch (error) {
+    console.error('Error sending admin message:', error);
+    res.status(500).json({
+      success: false,
+      message: 'เกิดข้อผิดพลาดในการส่งข้อความ'
+    });
+  }
+});
+
+/**
+ * API สำหรับดึงประวัติการสนทนา
+ */
+app.get('/api/conversations/:sessionId', (req, res) => {
+  const { sessionId } = req.params;
+
+  if (sessionData[sessionId]) {
+    const conversationData = conversations[sessionId] || {
+      messages: [],
+      status: 'waiting',
+      lastActivity: Date.now()
+    };
+
+    res.json({
+      success: true,
+      conversation: {
+        sessionId,
+        userInfo: sessionData[sessionId].userInfo || {},
+        steps: {
+          step1: sessionData[sessionId].step1,
+          step2: sessionData[sessionId].step2,
+          step3: sessionData[sessionId].step3,
+          step4: sessionData[sessionId].step4
+        },
+        status: conversationData.status,
+        lastActivity: conversationData.lastActivity,
+        messages: conversationData.messages,
+        agentId: conversationData.agentId
+      }
+    });
+  } else {
+    res.status(404).json({
+      success: false,
+      message: 'ไม่พบข้อมูลการสนทนา'
+    });
+  }
+});
+
+/**
+ * API สำหรับดึงรายการการสนทนาทั้งหมด
+ */
+app.get('/api/conversations', (req, res) => {
+  const { status } = req.query;
+
+  try {
+    // สร้างรายการการสนทนา
+    const conversationList = Object.keys(sessionData).map(sessionId => {
+      const session = sessionData[sessionId];
+      const conversation = conversations[sessionId] || {
+        messages: [],
+        status: 'waiting',
+        lastActivity: Date.now()
+      };
+
+      // หาข้อความล่าสุด
+      const messages = conversation.messages || [];
+      const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+
+      return {
+        sessionId,
+        userInfo: session.userInfo || {},
+        steps: {
+          step1: session.step1,
+          step2: session.step2,
+          step3: session.step3,
+          step4: session.step4
+        },
+        status: conversation.status || 'waiting',
+        lastActivity: conversation.lastActivity || Date.now(),
+        lastMessage: lastMessage ? {
+          text: lastMessage.text,
+          sender: lastMessage.sender,
+          timestamp: lastMessage.timestamp
+        } : null,
+        messageCount: messages.length
+      };
+    });
+
+    // กรองตามสถานะ (ถ้ามีการระบุ)
+    let filteredConversations = conversationList;
+    if (status && status !== 'all') {
+      filteredConversations = conversationList.filter(conv => conv.status === status);
+    }
+
+    // เรียงตามเวลากิจกรรมล่าสุด (ใหม่ -> เก่า)
+    filteredConversations.sort((a, b) => b.lastActivity - a.lastActivity);
+
+    res.json({
+      success: true,
+      total: filteredConversations.length,
+      conversations: filteredConversations
+    });
+  } catch (error) {
+    console.error('Error fetching conversations:', error);
+    res.status(500).json({
+      success: false,
+      message: 'เกิดข้อผิดพลาดในการดึงข้อมูลการสนทนา'
+    });
+  }
+});
+
+/**
+ * API สำหรับอัปเดตสถานะการสนทนา
+ */
+app.patch('/api/conversations/:sessionId/status', (req, res) => {
+  const { sessionId } = req.params;
+  const { status, adminId } = req.body;
+
+  if (!sessionData[sessionId]) {
+    return res.status(404).json({
+      success: false,
+      message: 'ไม่พบข้อมูลการสนทนา'
+    });
+  }
+
+  // ตรวจสอบว่ามีข้อมูลการสนทนาหรือไม่
+  if (!conversations[sessionId]) {
+    conversations[sessionId] = {
+      messages: [],
+      status: 'waiting',
+      lastActivity: Date.now()
+    };
+  }
+
+  // อัปเดตสถานะ
+  conversations[sessionId].status = status;
+  conversations[sessionId].lastActivity = Date.now();
+
+  // อัปเดต adminId ถ้ามีการระบุ
+  if (adminId) {
+    conversations[sessionId].agentId = adminId;
+  }
+
+  res.json({
+    success: true,
+    message: 'อัปเดตสถานะสำเร็จ',
+    conversation: {
+      sessionId,
+      status: conversations[sessionId].status,
+      lastActivity: conversations[sessionId].lastActivity,
+      agentId: conversations[sessionId].agentId
+    }
+  });
 });
 
 /**
