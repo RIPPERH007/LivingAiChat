@@ -37,6 +37,11 @@ const PIESOCKET_API_KEY = process.env.PIESOCKET_API_KEY || 'YOUR_PIESOCKET_API_K
 const PIESOCKET_CLUSTER_ID = process.env.PIESOCKET_CLUSTER_ID || 'YOUR_PIESOCKET_CLUSTER_ID';
 const PIESOCKET_API_ENDPOINT = `https://api.piesocket.com/v3/channel`;
 
+// เพิ่ม PieSocket Config
+const PIESOCKET_CONFIG = {
+  apiKey: 'mOGIGJTyKOmsesgjpchKEECKLekVGmuCSwNv2wpl',
+  clusterId: 's8661.sgp1'
+};
 // สร้างตัวแปรสำหรับเก็บข้อมูลแต่ละขั้นตอน โดยใช้ sessionId เป็น key
 const sessionData = {};
 
@@ -48,26 +53,29 @@ const conversations = {};
  * @param {string} channelId - ID ของช่องทาง (ใช้ sessionId)
  * @param {object} message - ข้อความที่ต้องการส่ง
  */
-async function sendPieSocketMessage(channelId, message) {
-  try {
-    await axios.post(`${PIESOCKET_API_ENDPOINT}/${channelId}/publish`,
-      { key: 'new_message', data: message },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Api-Key': PIESOCKET_API_KEY,
-          'Cluster-Id': PIESOCKET_CLUSTER_ID
-        }
-      }
-    );
-    console.log(`Message sent to PieSocket channel ${channelId}`);
-  } catch (error) {
-    console.error('Error sending PieSocket message:', error.message);
-    if (error.response) {
-      console.error('PieSocket response:', error.response.data);
-    }
-  }
-}
+ async function sendPieSocketMessage(channel, data) {
+   try {
+     // สร้าง URL พร้อมพารามิเตอร์ในรูปแบบที่ถูกต้อง
+     const url = `https://${PIESOCKET_CONFIG.clusterId}.piesocket.com/api/publish?api_key=${PIESOCKET_CONFIG.apiKey}&channel=${channel}`;
+
+     const response = await axios.post(url, data, {
+       headers: {
+         'Content-Type': 'application/json'
+       }
+     });
+
+     console.log('PieSocket message sent:', response.data);
+     return response.data;
+   } catch (error) {
+     console.error('Error sending PieSocket message:', error);
+     if (error.response) {
+       console.error('PieSocket response status:', error.response.status);
+       console.error('PieSocket response data:', error.response.data);
+     }
+     throw error;
+   }
+ }
+
 
 /**
  * API สำหรับส่งข้อความไปยัง Dialogflow
@@ -155,10 +163,22 @@ app.post('/api/dialogflow', async (req, res) => {
    // อัปเดตเวลากิจกรรมล่าสุด
    conversations[currentSessionId].lastActivity = Date.now();
 
+
     // แสดงข้อมูลดีบั๊กเพื่อช่วยในการพัฒนา
     console.log('Query:', query);
     console.log('Detected Intent:', detectedIntent);
     console.log('Confidence:', result.intentDetectionConfidence);
+
+    const lastMessage = conversations[currentSessionId].messages[conversations[currentSessionId].messages.length - 1];
+    try {
+      await sendPieSocketMessage(currentSessionId, {
+        event: 'new_message',
+        data: lastMessage
+      });
+    } catch (pieSocketError) {
+      console.error('PieSocket notification error:', pieSocketError);
+      // ไม่ต้อง return error กลับหากข้อผิดพลาดเกี่ยวกับ PieSocket
+    }
 
     // เก็บข้อมูลตาม intent ที่ตรวจพบ
    if (detectedIntent === 'provide_user_info') {
@@ -264,7 +284,16 @@ app.post('/api/admin/message', async (req, res) => {
     conversations[sessionId].status = 'answered';
     conversations[sessionId].lastActivity = Date.now();
     conversations[sessionId].agentId = adminId;
-
+const lastAdminMessage = conversations[sessionId].messages[conversations[sessionId].messages.length - 1];
+try {
+  await sendPieSocketMessage(sessionId, {
+    event: 'new_message',
+    data: lastAdminMessage
+  });
+} catch (pieSocketError) {
+  console.error('PieSocket notification error:', pieSocketError);
+  // ไม่ต้อง return error กลับหากข้อผิดพลาดเกี่ยวกับ PieSocket
+}
     // ส่งข้อความผ่าน PieSocket
     await sendPieSocketMessage(sessionId, messageData);
 
@@ -489,6 +518,39 @@ app.get('/api/test/piesocket', async (req, res) => {
     res.json({ message: 'PieSocket test message sent successfully!' });
   } catch (error) {
     res.status(500).json({ error: 'PieSocket test failed', details: error.message });
+  }
+});
+
+app.post('/api/test-piesocket', async (req, res) => {
+  const { channel, message } = req.body;
+
+  if (!channel || !message) {
+    return res.status(400).json({
+      success: false,
+      message: 'Channel และ message จำเป็นต้องระบุ'
+    });
+  }
+
+  try {
+    const result = await sendPieSocketMessage(channel, {
+      event: 'test_message',
+      data: {
+        text: message,
+        timestamp: Date.now()
+      }
+    });
+
+    res.json({
+      success: true,
+      message: 'ส่งข้อความทดสอบผ่าน PieSocket สำเร็จ',
+      result
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'เกิดข้อผิดพลาดในการทดสอบ PieSocket',
+      error: error.message
+    });
   }
 });
 

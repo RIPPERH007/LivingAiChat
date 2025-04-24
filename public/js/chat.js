@@ -1,6 +1,6 @@
 /**
- * LiveChat Bot Widget (ปรับปรุง)
- * ระบบแชทสด สำหรับการสนทนาอัจฉริยะด้วย PieSocket เรียลไทม์
+ * ปรับปรุง LiveChat Bot Widget
+ * เพิ่มการรองรับ PieSocket
  */
 (function () {
     // การกำหนดองค์ประกอบ DOM
@@ -10,6 +10,7 @@
         chatMessages: document.getElementById('chat-messages'),
         chatInput: document.getElementById('chat-input'),
         chatSendBtn: document.getElementById('chat-send-btn'),
+        chatNowBtn: document.getElementById('chat-now-btn'),
         chatInputArea: document.getElementById('chat-input-area'),
         chatMinimizeBtn: document.querySelector('.chat-minimize-btn')
     };
@@ -24,8 +25,8 @@
 
     // ตั้งค่า PieSocket
     const pieSocketConfig = {
-        apiKey: 'mOGIGJTyKOmsesgjpchKEECKLekVGmuCSwNv2wpl', // แทนที่ด้วย Cluster ID ของคุณ
-        clusterId: 's8661.sgp1',       // แทนที่ด้วย API Key ของคุณ
+        clusterId: 's8661.sgp1',
+        apiKey: 'mOGIGJTyKOmsesgjpchKEECKLekVGmuCSwNv2wpl',
         presence: false
     };
 
@@ -35,6 +36,11 @@
         elements.chatMinimizeBtn.addEventListener('click', toggleChat);
         elements.chatSendBtn.addEventListener('click', sendMessage);
 
+        // ถ้า chatNowBtn มีอยู่
+        if (elements.chatNowBtn) {
+            elements.chatNowBtn.addEventListener('click', startChat);
+        }
+
         // จัดการการส่งข้อความด้วย Enter
         elements.chatInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
@@ -42,86 +48,60 @@
             }
         });
 
-        // เพิ่ม Event Listener สำหรับชิป
-        const chips = document.querySelectorAll('.chip');
-        chips.forEach(chip => {
-            chip.addEventListener('click', handleChipClick);
+        // เพิ่ม Event Listeners สำหรับการคลิก chip
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('chip')) {
+                handleChipClick(e.target);
+            }
         });
     }
 
     // เชื่อมต่อกับ PieSocket
     function connectPieSocket() {
-        // ดักจับกรณีที่ PieSocket ไม่ได้ถูกโหลด
         if (typeof PieSocket === 'undefined') {
-            console.error('PieSocket library not loaded! Add PieSocket script to your HTML.');
-            return;
+            console.error('PieSocket library not loaded! Fallback to standard chat.');
+            return false;
         }
 
         try {
             // เชื่อมต่อ PieSocket
             chatState.pieSocket = new PieSocket(pieSocketConfig);
 
-            // สมัครรับข้อมูลจากช่องทางตาม sessionId
+            // สมัครรับข้อมูลจากช่องทางของเซสชันปัจจุบัน
             chatState.pieSocketChannel = chatState.pieSocket.subscribe(chatState.sessionId);
 
-            console.log('Connected to PieSocket:', chatState.sessionId);
-
-            // รับข้อความใหม่
+            // รับข้อความใหม่จากแอดมิน
             chatState.pieSocketChannel.on('new_message', (event) => {
-                console.log('PieSocket new message received:', event);
+                console.log('New message received:', event);
 
                 // ข้อมูลข้อความอยู่ใน event.data
                 const message = event.data;
 
-                // ตรวจสอบว่าข้อความนี้ยังไม่ได้แสดงบนหน้าจอ
-                if (!document.querySelector(`[data-message-id="${message.timestamp}"]`)) {
-                    // ตรวจสอบว่าเป็นข้อความจากใคร
-                    if (message.sender === 'admin') {
-                        // เพิ่มข้อความจากแอดมินลงในแชท
-                        addMessage('admin', message.text, message.timestamp);
-                    } else if (message.sender === 'bot') {
-                        // เพิ่มข้อความจากบอทลงในแชท
-                        addMessage('bot', message.text, message.timestamp);
+                // แสดงเฉพาะข้อความจากแอดมิน
+                if (message.sender === 'admin') {
+                    // สร้าง admin message แบบพิเศษที่มีชื่อแอดมิน
+                    const messageElement = document.createElement('div');
+                    messageElement.className = 'message bot-message';
+                    messageElement.innerHTML = `
+                        <div class="message-avatar">
+                            <img src="assets/icons/chat-avatar.jpg" alt="Admin">
+                        </div>
+                        <div class="message-content admin-message">
+                            <p>${escapeHTML(message.text)}</p>
+                            <small>${escapeHTML(message.adminName || 'Admin')}</small>
+                        </div>
+                    `;
 
-                        // ถ้ามี payload ให้แสดงด้วย
-                        if (message.payload) {
-                            handleDialogflowResponse({
-                                message: null, // ไม่ต้องแสดงข้อความซ้ำ
-                                payload: message.payload
-                            });
-                        }
-                    }
+                    elements.chatMessages.appendChild(messageElement);
+                    scrollToBottom();
                 }
             });
 
-            // รับการแจ้งเตือนสถานะ
-            chatState.pieSocketChannel.on('status_update', (event) => {
-                console.log('Status update received:', event);
-                // อาจจะแสดงสถานะให้ผู้ใช้เห็น เช่น "แอดมินกำลังพิมพ์..." ถ้ามีการส่งสถานะนี้มา
-            });
-
-            // รับการแจ้งเตือนการลบ session
-            chatState.pieSocketChannel.on('session_deleted', (event) => {
-                console.log('Session deleted:', event);
-                // อาจจะแจ้งให้ผู้ใช้ทราบว่าการสนทนาถูกลบ
-            });
-
+            console.log('PieSocket connected, listening on channel:', chatState.sessionId);
+            return true;
         } catch (error) {
             console.error('Error connecting to PieSocket:', error);
-        }
-    }
-
-    // จัดการการคลิกชิป
-    function handleChipClick(event) {
-        const clickText = event.target.dataset.text;
-        if (clickText) {
-            // โชว์ข้อความในช่องแชท
-            addMessage('user', clickText);
-
-            // ส่งคำถามไปยัง Dialogflow
-            sendToDialogflow(clickText, chatState.sessionId)
-                .then(handleDialogflowResponse)
-                .catch(handleDialogflowError);
+            return false;
         }
     }
 
@@ -133,9 +113,37 @@
 
         if (chatState.isOpen) {
             elements.chatWindow.classList.add('fade-in');
-            // โฟกัสที่ช่องข้อความเมื่อเปิดแชท
-            elements.chatInput.focus();
+
+            // เชื่อมต่อกับ PieSocket เมื่อเปิดแชท
+            if (!chatState.pieSocket) {
+                connectPieSocket();
+            }
         }
+    }
+
+    // เริ่มการสนทนา
+    function startChat() {
+        if (elements.chatNowBtn) {
+            elements.chatNowBtn.style.display = 'none';
+        }
+
+        if (elements.chatInputArea) {
+            elements.chatInputArea.classList.remove('hidden');
+        }
+
+        elements.chatInput.focus();
+    }
+
+    // จัดการการคลิก chip
+    function handleChipClick(chipElement) {
+        const clickText = chipElement.dataset.text;
+        if (!clickText) return;
+
+        addMessage('user', clickText);
+
+        sendToDialogflow(clickText, chatState.sessionId)
+            .then(handleDialogflowResponse)
+            .catch(handleDialogflowError);
     }
 
     // ส่งข้อความ
@@ -162,51 +170,29 @@
     }
 
     // เพิ่มข้อความลงในช่องแชท
-    function addMessage(sender, text, messageId = null) {
+    function addMessage(sender, text) {
         const messageElement = document.createElement('div');
         messageElement.className = `message ${sender}-message`;
-
-        // เพิ่ม data-message-id เพื่อใช้ตรวจสอบข้อความซ้ำ
-        const timestamp = messageId || Date.now();
-        messageElement.setAttribute('data-message-id', timestamp);
-
-        if (sender === 'user') {
-            messageElement.innerHTML = `
-                <div class="message-content">
-                    <p>${escapeHTML(text)}</p>
-                </div>
-                <div class="message-avatar">
-                    <i class="fa-solid fa-user"></i>
-                </div>
-            `;
-        } else if (sender === 'admin') {
-            messageElement.innerHTML = `
-                <div class="message-avatar">
-                    <img src="assets/icons/admin-avatar.jpg" alt="Admin">
-                </div>
-                <div class="message-content admin-message">
-                    <p>${escapeHTML(text)}</p>
-                    <small>แอดมิน</small>
-                </div>
-            `;
-        } else {
-            messageElement.innerHTML = `
-                <div class="message-avatar">
-                    <img src="assets/icons/chat-avatar.jpg" alt="Bot">
-                </div>
-                <div class="message-content">
-                    <p>${escapeHTML(text)}</p>
-                </div>
-            `;
-        }
-
+        messageElement.innerHTML = `
+            <div class="message-avatar">
+                ${sender === 'user'
+                ? '<i class="fa-solid fa-user"></i>'
+                : '<img src="assets/icons/chat-avatar.jpg" alt="Bot">'
+            }
+            </div>
+            <div class="message-content">
+                <p>${escapeHTML(text)}</p>
+            </div>
+        `;
         elements.chatMessages.appendChild(messageElement);
         scrollToBottom();
     }
 
     // ป้องกันการโจมตีแบบ XSS
     function escapeHTML(unsafe) {
+        if (!unsafe) return '';
         return unsafe
+            .toString()
             .replace(/&/g, "&amp;")
             .replace(/</g, "&lt;")
             .replace(/>/g, "&gt;")
@@ -221,7 +207,7 @@
     function handleDialogflowResponse(response) {
         console.log('Handling Dialogflow response:', response);
 
-        // แสดงข้อความตอบกลับ (ถ้ามี)
+        // แสดงข้อความตอบกลับ
         if (response.message) {
             addMessage('bot', response.message);
         }
@@ -247,7 +233,7 @@
                 // เพิ่มลงใน DOM
                 elements.chatMessages.appendChild(messageElement);
 
-                // เพิ่ม Event Listeners
+                // เพิ่ม Event Listeners สำหรับองค์ประกอบแบบโต้ตอบ
                 addInteractiveListeners(messageElement);
 
                 scrollToBottom();
@@ -267,7 +253,7 @@
 
     function renderChips(item) {
         return `
-            <div class="chips-container">
+            <div class="rich-content chips-container">
                 ${item.options.map(option => `
                     <div class="chip" data-text="${escapeHTML(option.text)}">
                         ${escapeHTML(option.text)}
@@ -282,7 +268,8 @@
         <div class="rich-content image-container">
             <img src="${escapeHTML(item.rawUrl)}"
                  alt="${escapeHTML(item.accessibilityText || 'Image')}"
-                 style="max-width:100%; border-radius: 8px;">
+                 data-text="${escapeHTML(item.title || item.accessibilityText || 'Image')}"
+                 style="max-width:100%; cursor: pointer;">
         </div>
     `;
     }
@@ -293,22 +280,23 @@
             return `
                 <div class="rich-content button-container">
                     ${item.options.map(option => {
-                        // ตรวจสอบว่ามี icon และ color หรือไม่
-                        const icon = option.icon ? `<i class="fa-solid fa-${escapeHTML(option.icon)}"></i>` : '';
-                        const colorClass = option.color ? `chat-btn-${escapeHTML(option.color)}` : 'chat-btn-primary';
-                        const buttonText = option.text || "Button";
+                // ตรวจสอบว่ามี icon และ color หรือไม่
+                const icon = option.icon ? `<i class="fa-solid fa-${escapeHTML(option.icon)}"></i>` : '';
+                const colorClass = option.color ? `chat-btn-${escapeHTML(option.color)}` : 'chat-btn-primary';
+                const buttonText = option.text || "Button";
 
-                        return `
+                return `
                             <button class="chat-btn ${colorClass}" data-text="${escapeHTML(buttonText)}">
                                 ${icon} ${escapeHTML(buttonText)}
                             </button>
                         `;
-                    }).join('')}
+            }).join('')}
                 </div>
             `;
         }
-        // โครงสร้างแบบเดิม
+        // โครงสร้างแบบเดิม (มี text โดยตรง)
         else {
+            // ตรวจสอบว่ามี icon และ color หรือไม่
             const icon = item.icon ? `<i class="fa-solid fa-${escapeHTML(item.icon)}"></i>` : '';
             const colorClass = item.color ? `chat-btn-${escapeHTML(item.color)}` : 'chat-btn-primary';
             const buttonText = item.text || "Button";
@@ -347,57 +335,57 @@
         return `
             <div class="property-list">
                 ${properties.map(property => {
-                    // จัดการวันที่ (ถ้ามี)
-                    const dateDisplay = property.date ? property.date : '';
-                    // จัดการจำนวนการดู (ถ้ามี)
-                    const viewsDisplay = property.views ? property.views : '';
-                    // สร้างข้อความสำหรับส่งเมื่อคลิก
-                    const clickText = `ขอดูรายละเอียดของอสังหาริมทรัพย์ ${property.id}`;
+            // จัดการวันที่ (ถ้ามี)
+            const dateDisplay = property.date ? property.date : '';
+            // จัดการจำนวนการดู (ถ้ามี)
+            const viewsDisplay = property.views ? property.views : '';
+            // สร้างข้อความสำหรับส่งเมื่อคลิก
+            const clickText = `ขอดูรายละเอียดของอสังหาริมทรัพย์ ${property.id}`;
 
-                    return `
-                        <div class="property-card" data-property-id="${property.id}" data-text="${escapeHTML(clickText)}">
-                            <div class="property-image">
-                                <img src="${property.imageUrl}" alt="${property.title}">
-                                <div class="property-badge">ขาย</div>
-                                ${(dateDisplay || viewsDisplay) ? `
-                                <div class="property-date-views">
-                                    ${dateDisplay ? `<div class="property-date">${dateDisplay}</div>` : ''}
-                                    ${viewsDisplay ? `
-                                    <div class="property-views">
-                                        <i class="fa-solid fa-eye"></i> ${viewsDisplay}
-                                    </div>
-                                    ` : ''}
+            return `
+                    <div class="property-card" data-property-id="${property.id}" data-text="${escapeHTML(clickText)}">
+                        <div class="property-image">
+                            <img src="${property.imageUrl}" alt="${property.title}">
+                            <div class="property-badge">ขาย</div>
+                            ${(dateDisplay || viewsDisplay) ? `
+                            <div class="property-date-views">
+                                ${dateDisplay ? `<div class="property-date">${dateDisplay}</div>` : ''}
+                                ${viewsDisplay ? `
+                                <div class="property-views">
+                                    <i class="fa-solid fa-eye"></i> ${viewsDisplay}
                                 </div>
                                 ` : ''}
                             </div>
-                            <div class="property-info">
-                                <div class="property-price">฿${property.price.toLocaleString()}</div>
-                                <div class="property-title">${property.title}</div>
-                                <div class="property-location">
-                                    <i class="fa-solid fa-location-dot"></i> ${property.location}
+                            ` : ''}
+                        </div>
+                        <div class="property-info">
+                            <div class="property-price">฿${property.price.toLocaleString()}</div>
+                            <div class="property-title">${property.title}</div>
+                            <div class="property-location">
+                                <i class="fa-solid fa-location-dot"></i> ${property.location}
+                            </div>
+                            <div class="property-amenities">
+                                <div class="amenity-item">
+                                    <i class="fa-solid fa-chart-area"></i>
+                                    <span>${property.area} ตร.ว.</span>
                                 </div>
-                                <div class="property-amenities">
-                                    <div class="amenity-item">
-                                        <i class="fa-solid fa-chart-area"></i>
-                                        <span>${property.area} ตร.ว.</span>
-                                    </div>
-                                    <div class="amenity-item">
-                                        <i class="fa-solid fa-layer-group"></i>
-                                        <span>ชั้น ${property.floors}</span>
-                                    </div>
-                                    <div class="amenity-item">
-                                        <i class="fa-solid fa-bed"></i>
-                                        <span>${property.bedrooms} ห้องนอน</span>
-                                    </div>
-                                    <div class="amenity-item">
-                                        <i class="fa-solid fa-bath"></i>
-                                        <span>${property.bathrooms} ห้องน้ำ</span>
-                                    </div>
+                                <div class="amenity-item">
+                                    <i class="fa-solid fa-layer-group"></i>
+                                    <span>ชั้น ${property.floors}</span>
+                                </div>
+                                <div class="amenity-item">
+                                    <i class="fa-solid fa-bed"></i>
+                                    <span>${property.bedrooms} ห้องนอน</span>
+                                </div>
+                                <div class="amenity-item">
+                                    <i class="fa-solid fa-bath"></i>
+                                    <span>${property.bathrooms} ห้องน้ำ</span>
                                 </div>
                             </div>
                         </div>
+                    </div>
                     `;
-                }).join('')}
+        }).join('')}
             </div>
         `;
     }
@@ -442,27 +430,17 @@
 
     // เพิ่ม Event Listeners สำหรับองค์ประกอบแบบโต้ตอบ
     function addInteractiveListeners(richContentElement) {
-        // Chips
-        const chips = richContentElement.querySelectorAll('.chip');
-        chips.forEach(chip => {
-            chip.addEventListener('click', function() {
-                const clickText = this.dataset.text;
-                if (clickText) {
-                    addMessage('user', clickText);
-                    sendToDialogflow(clickText, chatState.sessionId)
-                        .then(handleDialogflowResponse)
-                        .catch(handleDialogflowError);
-                }
-            });
-        });
+        console.log('Setting up interactive elements');
 
-        // Buttons
-        const buttons = richContentElement.querySelectorAll('.chat-btn');
+        // ปุ่มและ chips
+        const buttons = richContentElement.querySelectorAll('.chat-btn, .chip');
         buttons.forEach(button => {
             button.addEventListener('click', function() {
                 const clickText = this.dataset.text;
                 if (clickText) {
+                    console.log('Button clicked:', clickText);
                     addMessage('user', clickText);
+
                     sendToDialogflow(clickText, chatState.sessionId)
                         .then(handleDialogflowResponse)
                         .catch(handleDialogflowError);
@@ -476,7 +454,9 @@
             item.addEventListener('click', function() {
                 const clickText = this.dataset.text;
                 if (clickText) {
+                    console.log('List item clicked:', clickText);
                     addMessage('user', clickText);
+
                     sendToDialogflow(clickText, chatState.sessionId)
                         .then(handleDialogflowResponse)
                         .catch(handleDialogflowError);
@@ -490,7 +470,9 @@
             card.addEventListener('click', function() {
                 const clickText = this.dataset.text;
                 if (clickText) {
+                    console.log('Property card clicked:', clickText);
                     addMessage('user', clickText);
+
                     sendToDialogflow(clickText, chatState.sessionId)
                         .then(handleDialogflowResponse)
                         .catch(handleDialogflowError);
@@ -514,11 +496,15 @@
 
     // เริ่มการทำงานของสคริปต์
     function init() {
+        console.log('Initializing chat with session ID:', chatState.sessionId);
         setupEventListeners();
-        // เชื่อมต่อ PieSocket เมื่อเริ่มต้น
-        connectPieSocket();
-        // ถ้าต้องการเปิดแชทโดยอัตโนมัติเมื่อโหลดหน้า สามารถเพิ่มโค้ดด้านล่างนี้
-        // setTimeout(toggleChat, 2000);
+
+        // พยายามเชื่อมต่อกับ PieSocket
+        if (typeof PieSocket !== 'undefined') {
+            connectPieSocket();
+        } else {
+            console.log('PieSocket library not available, will attempt to connect when chat is opened');
+        }
     }
 
     // เรียกใช้การเริ่มต้นเมื่อโหลดหน้าเว็บ

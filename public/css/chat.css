@@ -370,3 +370,98 @@ body {
   display: block;
   margin-top: 4px;
 }
+/* Admin Message Styles */
+.message-content.admin-message {
+  background-color: #6F6158 !important;
+  color: white;
+}
+
+.message-content.admin-message small {
+  font-size: 10px;
+  opacity: 0.8;
+  display: block;
+  margin-top: 4px;
+}
+
+/* Chat Button Styles */
+.chat-btn {
+  display: inline-block;
+  padding: 8px 15px;
+  margin: 5px;
+  border-radius: 20px;
+  font-size: 14px;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+  font-family: 'Prompt', 'Sarabun', 'Kanit', sans-serif;
+}
+
+.chat-btn-primary {
+  background-color: #6F6158;
+  color: white;
+}
+
+.chat-btn-primary:hover {
+  background-color: #5d5048;
+}
+
+.chat-btn-secondary {
+  background-color: #2bbd7e;
+  color: white;
+}
+
+.chat-btn-secondary:hover {
+  background-color: #239d69;
+}
+
+.chat-btn-light {
+  background-color: #f8f9fa;
+  color: #333;
+  border: 1px solid #ddd;
+}
+
+.chat-btn-light:hover {
+  background-color: #e9ecef;
+}
+
+.chat-btn-danger {
+  background-color: #dc3545;
+  color: white;
+}
+
+.chat-btn-danger:hover {
+  background-color: #c82333;
+}
+
+.chat-btn-success {
+  background-color: #28a745;
+  color: white;
+}
+
+.chat-btn-success:hover {
+  background-color: #218838;
+}
+
+/* PieSocket Connection Indicator */
+.piesocket-status {
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: rgba(255,255,255,0.7);
+  background-color: rgba(0,0,0,0.2);
+  padding: 2px 8px;
+  border-radius: 10px;
+  display: none;
+}
+
+.piesocket-status.connected {
+  background-color: rgba(40,167,69,0.3);
+  display: block;
+}
+
+.piesocket-status.disconnected {
+  background-color: rgba(220,53,69,0.3);
+  display: block;
+}
