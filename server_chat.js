@@ -33,14 +33,16 @@ const sessionClient = new SessionsClient({
 });
 
 // ตั้งค่า PieSocket
-const PIESOCKET_API_KEY = process.env.PIESOCKET_API_KEY || 'YOUR_PIESOCKET_API_KEY';
-const PIESOCKET_CLUSTER_ID = process.env.PIESOCKET_CLUSTER_ID || 'YOUR_PIESOCKET_CLUSTER_ID';
+const PIESOCKET_API_KEY = process.env.PIESOCKET_API_KEY || 'mOGIGJTyKOmsesgjpchKEECKLekVGmuCSwNv2wpl';
+const PIESOCKET_CLUSTER_ID = process.env.PIESOCKET_CLUSTER_ID || 's8661.sgp1';
 const PIESOCKET_API_ENDPOINT = `https://api.piesocket.com/v3/channel`;
 
 // เพิ่ม PieSocket Config
 const PIESOCKET_CONFIG = {
+  clusterId: 's8661.sgp1',
   apiKey: 'mOGIGJTyKOmsesgjpchKEECKLekVGmuCSwNv2wpl',
-  clusterId: 's8661.sgp1'
+    anonymous: true,  // เพิ่มออฟชันนี้
+     allowedOrigins: ['*']
 };
 // สร้างตัวแปรสำหรับเก็บข้อมูลแต่ละขั้นตอน โดยใช้ sessionId เป็น key
 const sessionData = {};
@@ -53,30 +55,34 @@ const conversations = {};
  * @param {string} channelId - ID ของช่องทาง (ใช้ sessionId)
  * @param {object} message - ข้อความที่ต้องการส่ง
  */
- async function sendPieSocketMessage(channel, data) {
-   try {
-     // สร้าง URL พร้อมพารามิเตอร์ในรูปแบบที่ถูกต้อง
-     const url = `https://${PIESOCKET_CONFIG.clusterId}.piesocket.com/api/publish?api_key=${PIESOCKET_CONFIG.apiKey}&channel=${channel}`;
 
-     const response = await axios.post(url, data, {
-       headers: {
-         'Content-Type': 'application/json'
-       }
-     });
+async function sendPieSocketMessage(channel, message) {
+    try {
+        const response = await axios.post(
+            'https://api.piesocket.com/v1/pub',
+            {
+                channel: channel,
+                message: JSON.stringify(message)
+            },
+            {
+                headers: {
+                    'Authorization': `Bearer ${process.env.PIESOCKET_API_KEY}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
 
-     console.log('PieSocket message sent:', response.data);
-     return response.data;
-   } catch (error) {
-     console.error('Error sending PieSocket message:', error);
-     if (error.response) {
-       console.error('PieSocket response status:', error.response.status);
-       console.error('PieSocket response data:', error.response.data);
-     }
-     throw error;
-   }
- }
-
-
+        console.log('PieSocket message sent successfully');
+        return response.data;
+    } catch (error) {
+        console.error('PieSocket send error:', {
+            message: error.message,
+            response: error.response ? error.response.data : null,
+            status: error.response ? error.response.status : null
+        });
+        throw error;
+    }
+}
 /**
  * API สำหรับส่งข้อความไปยัง Dialogflow
  */

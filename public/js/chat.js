@@ -27,7 +27,9 @@
     const pieSocketConfig = {
         clusterId: 's8661.sgp1',
         apiKey: 'mOGIGJTyKOmsesgjpchKEECKLekVGmuCSwNv2wpl',
-        presence: false
+        presence: false,
+    anonymous: true,  // เพิ่มออฟชันนี้
+                       allowedOrigins: ['*']
     };
 
     // การลงทะเบียนตัวจัดการเหตุการณ์
