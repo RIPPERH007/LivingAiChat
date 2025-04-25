@@ -39,7 +39,7 @@ body {
     width: 60px;
     height: 60px;
     border-radius: 50%;
-    background-color: var(--chat-accent);
+    background-color: #4b3f3a;
     color: white;
     display: flex;
     justify-content: center;
@@ -282,7 +282,7 @@ body {
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    background-color: var(--chat-accent);
+    background-color: #4b3f3a;
     color: white;
     border: none;
     cursor: pointer;
