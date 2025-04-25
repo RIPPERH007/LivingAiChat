@@ -1,6 +1,6 @@
 /**
  * ปรับปรุง LiveChat Bot Widget
- * เพิ่มการรองรับ PieSocket
+ * เปลี่ยนจาก PieSocket มาใช้ Socket.IO
  */
 (function () {
     // การกำหนดองค์ประกอบ DOM
@@ -12,24 +12,15 @@
         chatSendBtn: document.getElementById('chat-send-btn'),
         chatNowBtn: document.getElementById('chat-now-btn'),
         chatInputArea: document.getElementById('chat-input-area'),
-        chatMinimizeBtn: document.querySelector('.chat-minimize-btn')
+        chatMinimizeBtn: document.querySelector('.chat-minimize-btn'),
+        socketStatus: document.getElementById('socket-status') // สถานะการเชื่อมต่อ Socket.IO
     };
 
     // สถานะการแชท
     const chatState = {
         isOpen: false,
         sessionId: generateSessionId(),
-        pieSocket: null,
-        pieSocketChannel: null
-    };
-
-    // ตั้งค่า PieSocket
-    const pieSocketConfig = {
-        clusterId: 's8661.sgp1',
-        apiKey: 'mOGIGJTyKOmsesgjpchKEECKLekVGmuCSwNv2wpl',
-        presence: false,
-    anonymous: true,  // เพิ่มออฟชันนี้
-                       allowedOrigins: ['*']
+        socket: null
     };
 
     // การลงทะเบียนตัวจัดการเหตุการณ์
@@ -58,51 +49,126 @@
         });
     }
 
-    // เชื่อมต่อกับ PieSocket
-    function connectPieSocket() {
-        if (typeof PieSocket === 'undefined') {
-            console.error('PieSocket library not loaded! Fallback to standard chat.');
+    // เชื่อมต่อกับ Socket.IO
+    function connectSocket() {
+        // ตรวจสอบว่า Socket.IO ถูกโหลดแล้วหรือไม่
+        if (typeof io === 'undefined') {
+            console.error('Socket.IO library not loaded! Make sure to include the Socket.IO client script.');
             return false;
         }
 
         try {
-            // เชื่อมต่อ PieSocket
-            chatState.pieSocket = new PieSocket(pieSocketConfig);
+            // เชื่อมต่อ Socket.IO
+            const socketUrl = window.location.hostname === 'localhost' ?
+                              'http://localhost:3000' :
+                              window.location.origin;
 
-            // สมัครรับข้อมูลจากช่องทางของเซสชันปัจจุบัน
-            chatState.pieSocketChannel = chatState.pieSocket.subscribe(chatState.sessionId);
+            chatState.socket = io(socketUrl);
 
-            // รับข้อความใหม่จากแอดมิน
-            chatState.pieSocketChannel.on('new_message', (event) => {
-                console.log('New message received:', event);
+            // เมื่อเชื่อมต่อสำเร็จ
+            chatState.socket.on('connect', () => {
+                console.log('Connected to Socket.IO with ID:', chatState.socket.id);
 
-                // ข้อมูลข้อความอยู่ใน event.data
-                const message = event.data;
+                // เข้าร่วมห้องแชทตาม sessionId
+                chatState.socket.emit('join', chatState.sessionId);
 
-                // แสดงเฉพาะข้อความจากแอดมิน
-                if (message.sender === 'admin') {
-                    // สร้าง admin message แบบพิเศษที่มีชื่อแอดมิน
-                    const messageElement = document.createElement('div');
-                    messageElement.className = 'message bot-message';
-                    messageElement.innerHTML = `
-                        <div class="message-avatar">
-                            <img src="assets/icons/chat-avatar.jpg" alt="Admin">
-                        </div>
-                        <div class="message-content admin-message">
-                            <p>${escapeHTML(message.text)}</p>
-                            <small>${escapeHTML(message.adminName || 'Admin')}</small>
-                        </div>
-                    `;
-
-                    elements.chatMessages.appendChild(messageElement);
-                    scrollToBottom();
+                // อัปเดตสถานะการเชื่อมต่อ (ถ้ามี)
+                if (elements.socketStatus) {
+                    elements.socketStatus.textContent = 'Connected';
+                    elements.socketStatus.classList.add('connected');
+                    elements.socketStatus.classList.remove('disconnected');
                 }
             });
 
-            console.log('PieSocket connected, listening on channel:', chatState.sessionId);
+            // เมื่อมีข้อความใหม่จากเซิร์ฟเวอร์
+            chatState.socket.on('new_message', (message) => {
+                console.log('New message received via socket:', message);
+
+                // แสดงเฉพาะข้อความจากแอดมินหรือบอท (ไม่ต้องแสดงข้อความของผู้ใช้เอง)
+                if (message.sender === 'admin' || message.sender === 'bot') {
+                    // ข้อความจากแอดมิน
+                    if (message.sender === 'admin') {
+                        const messageElement = document.createElement('div');
+                        messageElement.className = 'message bot-message';
+                        messageElement.innerHTML = `
+                            <div class="message-avatar">
+                                <img src="assets/icons/chat-avatar.jpg" alt="Admin">
+                            </div>
+                            <div class="message-content admin-message">
+                                <p>${escapeHTML(message.text)}</p>
+                                <small>${escapeHTML(message.adminName || 'Admin')}</small>
+                            </div>
+                        `;
+
+                        elements.chatMessages.appendChild(messageElement);
+                        scrollToBottom();
+                    }
+                    // ข้อความจากบอท
+                    else if (message.sender === 'bot') {
+                        // จัดการกับ payload ถ้ามี
+                        if (message.payload) {
+                            const richContentHtml = processRichContent(message.payload);
+
+                            if (richContentHtml) {
+                                const messageElement = document.createElement('div');
+                                messageElement.className = 'message bot-message';
+                                messageElement.innerHTML = `
+                                    <div class="message-avatar">
+                                        <img src="assets/icons/chat-avatar.jpg" alt="Bot">
+                                    </div>
+                                    <div class="message-content">
+                                        ${richContentHtml}
+                                    </div>
+                                `;
+
+                                elements.chatMessages.appendChild(messageElement);
+                                addInteractiveListeners(messageElement);
+                                scrollToBottom();
+                            }
+                        }
+
+                        // ถ้ามีข้อความธรรมดา
+                        if (message.text) {
+                            addMessage('bot', message.text);
+                        }
+                    }
+                }
+            });
+
+            // เมื่อมีการอัปเดตสถานะการสนทนา
+            chatState.socket.on('status_update', (data) => {
+                console.log('Conversation status updated:', data);
+                // สามารถเพิ่มการจัดการสถานะการสนทนาที่นี่ได้ (ถ้าต้องการ)
+            });
+
+            // เมื่อตัดการเชื่อมต่อ
+            chatState.socket.on('disconnect', () => {
+                console.log('Disconnected from Socket.IO');
+
+                // อัปเดตสถานะการเชื่อมต่อ (ถ้ามี)
+                if (elements.socketStatus) {
+                    elements.socketStatus.textContent = 'Disconnected';
+                    elements.socketStatus.classList.add('disconnected');
+                    elements.socketStatus.classList.remove('connected');
+                }
+            });
+
+            // เมื่อเกิดข้อผิดพลาดในการเชื่อมต่อ
+            chatState.socket.on('connect_error', (error) => {
+                console.error('Socket.IO connection error:', error);
+
+                // อัปเดตสถานะการเชื่อมต่อ (ถ้ามี)
+                if (elements.socketStatus) {
+                    elements.socketStatus.textContent = 'Connection Error';
+                    elements.socketStatus.classList.add('disconnected');
+                    elements.socketStatus.classList.remove('connected');
+                }
+            });
+
+            console.log('Socket.IO initialized, waiting for connection...');
             return true;
         } catch (error) {
-            console.error('Error connecting to PieSocket:', error);
+            console.error('Error connecting to Socket.IO:', error);
             return false;
         }
     }
@@ -116,9 +182,12 @@
         if (chatState.isOpen) {
             elements.chatWindow.classList.add('fade-in');
 
-            // เชื่อมต่อกับ PieSocket เมื่อเปิดแชท
-            if (!chatState.pieSocket) {
-                connectPieSocket();
+            // เชื่อมต่อกับ Socket.IO เมื่อเปิดแชท
+            if (!chatState.socket) {
+                connectSocket();
+            } else if (chatState.socket.disconnected) {
+                // ลองเชื่อมต่อใหม่ถ้าขาดการเชื่อมต่อ
+                chatState.socket.connect();
             }
         }
     }
@@ -188,6 +257,16 @@
         `;
         elements.chatMessages.appendChild(messageElement);
         scrollToBottom();
+
+        // ถ้าเป็นข้อความจากผู้ใช้และมีการเชื่อมต่อ Socket.IO
+        if (sender === 'user' && chatState.socket && chatState.socket.connected) {
+            chatState.socket.emit('new_message', {
+                sender: 'user',
+                text: text,
+                timestamp: Date.now(),
+                room: chatState.sessionId
+            });
+        }
     }
 
     // ป้องกันการโจมตีแบบ XSS
@@ -501,11 +580,11 @@
         console.log('Initializing chat with session ID:', chatState.sessionId);
         setupEventListeners();
 
-        // พยายามเชื่อมต่อกับ PieSocket
-        if (typeof PieSocket !== 'undefined') {
-            connectPieSocket();
+        // พยายามเชื่อมต่อกับ Socket.IO
+        if (typeof io !== 'undefined') {
+            connectSocket();
         } else {
-            console.log('PieSocket library not available, will attempt to connect when chat is opened');
+            console.log('Socket.IO library not available, will attempt to connect when chat is opened');
         }
     }
 

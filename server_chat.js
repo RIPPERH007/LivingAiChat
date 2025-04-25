@@ -1,7 +1,7 @@
 /**
  * Node.js Backend Server
  * เชื่อมต่อระหว่าง Live Chat และ Dialogflow
- * รองรับการทำงานกับระบบแอดมินและใช้ PieSocket สำหรับแชทแบบเรียลไทม์
+ * รองรับการทำงานกับระบบแอดมินและใช้ Socket.IO สำหรับแชทแบบเรียลไทม์
  */
 require('dotenv').config();
 
@@ -14,8 +14,19 @@ const bodyParser = require('body-parser');
 const axios = require('axios');
 const path = require('path');
 const webhookController = require('./controllers/webhookController');
+const http = require('http');
+const socketIo = require('socket.io');
 
 const app = express();
+const server = http.createServer(app);
+const io = socketIo(server, {
+  cors: {
+    origin: "*", // อนุญาตให้เข้าถึงจากทุกโดเมน (ปรับแก้ตามความเหมาะสมในการใช้งานจริง)
+    methods: ["GET", "POST"],
+    allowedHeaders: ["my-custom-header"],
+    credentials: true
+  }
+});
 
 // Middleware
 app.use(bodyParser.json());
@@ -32,57 +43,47 @@ const sessionClient = new SessionsClient({
   projectId: process.env.DIALOGFLOW_PROJECT_ID,
 });
 
-// ตั้งค่า PieSocket
-const PIESOCKET_API_KEY = process.env.PIESOCKET_API_KEY || 'mOGIGJTyKOmsesgjpchKEECKLekVGmuCSwNv2wpl';
-const PIESOCKET_CLUSTER_ID = process.env.PIESOCKET_CLUSTER_ID || 's8661.sgp1';
-const PIESOCKET_API_ENDPOINT = `https://api.piesocket.com/v3/channel`;
-
-// เพิ่ม PieSocket Config
-const PIESOCKET_CONFIG = {
-  clusterId: 's8661.sgp1',
-  apiKey: 'mOGIGJTyKOmsesgjpchKEECKLekVGmuCSwNv2wpl',
-    anonymous: true,  // เพิ่มออฟชันนี้
-     allowedOrigins: ['*']
-};
 // สร้างตัวแปรสำหรับเก็บข้อมูลแต่ละขั้นตอน โดยใช้ sessionId เป็น key
 const sessionData = {};
 
 // สร้างตัวแปรสำหรับเก็บข้อมูลการสนทนา
 const conversations = {};
 
-/**
- * ฟังก์ชันสำหรับส่งข้อความผ่าน PieSocket
- * @param {string} channelId - ID ของช่องทาง (ใช้ sessionId)
- * @param {object} message - ข้อความที่ต้องการส่ง
- */
+// Socket.IO Event Handlers
+io.on('connection', (socket) => {
+  console.log('Client connected:', socket.id);
 
-async function sendPieSocketMessage(channel, message) {
-    try {
-        const response = await axios.post(
-            'https://api.piesocket.com/v1/pub',
-            {
-                channel: channel,
-                message: JSON.stringify(message)
-            },
-            {
-                headers: {
-                    'Authorization': `Bearer ${process.env.PIESOCKET_API_KEY}`,
-                    'Content-Type': 'application/json'
-                }
-            }
-        );
+  // รับการสมัครห้องแชท (เมื่อผู้ใช้หรือแอดมินเข้าร่วมห้อง)
+  socket.on('join', (roomId) => {
+    console.log(`Client ${socket.id} joined room: ${roomId}`);
+    socket.join(roomId);
+  });
 
-        console.log('PieSocket message sent successfully');
-        return response.data;
-    } catch (error) {
-        console.error('PieSocket send error:', {
-            message: error.message,
-            response: error.response ? error.response.data : null,
-            status: error.response ? error.response.status : null
-        });
-        throw error;
-    }
-}
+  // รับเมื่อผู้ใช้ออกจากห้อง
+  socket.on('leave', (roomId) => {
+    console.log(`Client ${socket.id} left room: ${roomId}`);
+    socket.leave(roomId);
+  });
+
+  // รับข้อความจากผู้ใช้หรือแอดมิน
+  socket.on('new_message', (data) => {
+    console.log('New message received via socket:', data);
+    // ส่งข้อความไปยังทุกคนที่อยู่ในห้องเดียวกัน (ยกเว้นผู้ส่ง)
+    socket.to(data.room).emit('new_message', data);
+  });
+
+  // รับการอัปเดตสถานะ
+  socket.on('status_update', (data) => {
+    console.log('Status update received:', data);
+    socket.to(data.room).emit('status_update', data);
+  });
+
+  // ตัวจัดการเมื่อตัดการเชื่อมต่อ
+  socket.on('disconnect', () => {
+    console.log('Client disconnected:', socket.id);
+  });
+});
+
 /**
  * API สำหรับส่งข้อความไปยัง Dialogflow
  */
@@ -152,8 +153,11 @@ app.post('/api/dialogflow', async (req, res) => {
    // บันทึกข้อความผู้ใช้
    conversations[currentSessionId].messages.push(userMessage);
 
-   // ส่งข้อความผู้ใช้ผ่าน PieSocket เพื่อให้แอดมินเห็นทันที
-   await sendPieSocketMessage(currentSessionId, userMessage);
+   // ส่งข้อความผู้ใช้ผ่าน Socket.IO
+   io.to(currentSessionId).emit('new_message', {
+     ...userMessage,
+     room: currentSessionId
+   });
 
    // สร้างข้อมูลข้อความของบอท
    const botMessage = {
@@ -169,22 +173,16 @@ app.post('/api/dialogflow', async (req, res) => {
    // อัปเดตเวลากิจกรรมล่าสุด
    conversations[currentSessionId].lastActivity = Date.now();
 
-
     // แสดงข้อมูลดีบั๊กเพื่อช่วยในการพัฒนา
     console.log('Query:', query);
     console.log('Detected Intent:', detectedIntent);
     console.log('Confidence:', result.intentDetectionConfidence);
 
-    const lastMessage = conversations[currentSessionId].messages[conversations[currentSessionId].messages.length - 1];
-    try {
-      await sendPieSocketMessage(currentSessionId, {
-        event: 'new_message',
-        data: lastMessage
-      });
-    } catch (pieSocketError) {
-      console.error('PieSocket notification error:', pieSocketError);
-      // ไม่ต้อง return error กลับหากข้อผิดพลาดเกี่ยวกับ PieSocket
-    }
+    // ส่งข้อความบอทผ่าน Socket.IO
+    io.to(currentSessionId).emit('new_message', {
+      ...botMessage,
+      room: currentSessionId
+    });
 
     // เก็บข้อมูลตาม intent ที่ตรวจพบ
    if (detectedIntent === 'provide_user_info') {
@@ -205,7 +203,11 @@ app.post('/api/dialogflow', async (req, res) => {
     } else if (detectedIntent === 'request_agent') {
       // ถ้าผู้ใช้ต้องการคุยกับเจ้าหน้าที่
       conversations[currentSessionId].status = 'waiting';
-      // ส่งการแจ้งเตือนไปยังแอดมิน (สามารถเพิ่มโค้ดส่งการแจ้งเตือนที่นี่)
+      // ส่งการแจ้งเตือนไปยังแอดมิน
+      io.emit('user_request_agent', {
+        sessionId: currentSessionId,
+        timestamp: Date.now()
+      });
       console.log('User requested to speak with an agent. Session ID:', currentSessionId);
     }
 
@@ -231,13 +233,18 @@ app.post('/api/dialogflow', async (req, res) => {
           responseData.payload = payload;
           // เพิ่ม payload ลงในข้อความบอท
           botMessage.payload = payload;
+
+          // ส่งข้อความบอทที่มี payload ผ่าน Socket.IO อีกครั้ง
+          io.to(currentSessionId).emit('new_message', {
+            ...botMessage,
+            room: currentSessionId,
+            payload: payload
+          });
+
           break; // ใช้ payload แรกที่พบ
         }
       }
     }
-
-    // ส่งข้อความบอทผ่าน PieSocket อีกครั้งหลังจากเพิ่ม payload แล้ว
-    await sendPieSocketMessage(currentSessionId, botMessage);
 
     res.json(responseData);
   } catch (error) {
@@ -290,18 +297,12 @@ app.post('/api/admin/message', async (req, res) => {
     conversations[sessionId].status = 'answered';
     conversations[sessionId].lastActivity = Date.now();
     conversations[sessionId].agentId = adminId;
-const lastAdminMessage = conversations[sessionId].messages[conversations[sessionId].messages.length - 1];
-try {
-  await sendPieSocketMessage(sessionId, {
-    event: 'new_message',
-    data: lastAdminMessage
-  });
-} catch (pieSocketError) {
-  console.error('PieSocket notification error:', pieSocketError);
-  // ไม่ต้อง return error กลับหากข้อผิดพลาดเกี่ยวกับ PieSocket
-}
-    // ส่งข้อความผ่าน PieSocket
-    await sendPieSocketMessage(sessionId, messageData);
+
+    // ส่งข้อความผ่าน Socket.IO
+    io.to(sessionId).emit('new_message', {
+      ...messageData,
+      room: sessionId
+    });
 
     // ส่งข้อมูลกลับไป
     res.json({
@@ -452,11 +453,12 @@ app.patch('/api/conversations/:sessionId/status', (req, res) => {
     conversations[sessionId].agentId = adminId;
   }
 
-  // ส่งการแจ้งเตือนสถานะผ่าน PieSocket
-  sendPieSocketMessage(sessionId, {
+  // ส่งการแจ้งเตือนสถานะผ่าน Socket.IO
+  io.to(sessionId).emit('status_update', {
     type: 'status_update',
     status: status,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    room: sessionId
   });
 
   res.json({
@@ -486,10 +488,11 @@ app.delete('/api/sessionData/:sessionId', (req, res) => {
       delete conversations[sessionId];
     }
 
-    // ส่งการแจ้งเตือนการลบข้อมูลผ่าน PieSocket
-    sendPieSocketMessage(sessionId, {
+    // ส่งการแจ้งเตือนการลบข้อมูลผ่าน Socket.IO
+    io.to(sessionId).emit('session_deleted', {
       type: 'session_deleted',
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      room: sessionId
     });
 
     res.json({
@@ -512,52 +515,11 @@ app.get('/api/test', (req, res) => {
 });
 
 /**
- * API สำหรับทดสอบการเชื่อมต่อ PieSocket
+ * API สำหรับทดสอบการเชื่อมต่อ Socket.IO
  */
-app.get('/api/test/piesocket', async (req, res) => {
-  try {
-    await sendPieSocketMessage('test-channel', {
-      type: 'test',
-      message: 'PieSocket test message',
-      timestamp: Date.now()
-    });
-    res.json({ message: 'PieSocket test message sent successfully!' });
-  } catch (error) {
-    res.status(500).json({ error: 'PieSocket test failed', details: error.message });
-  }
-});
-
-app.post('/api/test-piesocket', async (req, res) => {
-  const { channel, message } = req.body;
-
-  if (!channel || !message) {
-    return res.status(400).json({
-      success: false,
-      message: 'Channel และ message จำเป็นต้องระบุ'
-    });
-  }
-
-  try {
-    const result = await sendPieSocketMessage(channel, {
-      event: 'test_message',
-      data: {
-        text: message,
-        timestamp: Date.now()
-      }
-    });
-
-    res.json({
-      success: true,
-      message: 'ส่งข้อความทดสอบผ่าน PieSocket สำเร็จ',
-      result
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'เกิดข้อผิดพลาดในการทดสอบ PieSocket',
-      error: error.message
-    });
-  }
+app.get('/api/test/socket', (req, res) => {
+  io.emit('test', { message: 'This is a test message', timestamp: Date.now() });
+  res.json({ message: 'Socket.IO test message sent successfully!' });
 });
 
 /**
@@ -576,6 +538,6 @@ app.get('/admin', (req, res) => {
  * เริ่มต้น server
  */
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server กำลังทำงานที่พอร์ต ${PORT}`);
 });
