@@ -49,6 +49,11 @@
         });
     }
 
+    // เพิ่มฟังก์ชันตรวจสอบข้อความซ้ำ
+    function isMessageDuplicate(messageId) {
+        return document.querySelector(`.message[data-message-id="${messageId}"]`) !== null;
+    }
+
     // เชื่อมต่อกับ Socket.IO
     function connectSocket() {
         // ตรวจสอบว่า Socket.IO ถูกโหลดแล้วหรือไม่
@@ -84,53 +89,59 @@
             chatState.socket.on('new_message', (message) => {
                 console.log('New message received via socket:', message);
 
+                // เช็คว่าเป็นข้อความที่แสดงไปแล้วหรือไม่
+                if (isMessageDuplicate(message.timestamp)) {
+                    console.log('Duplicate message from socket, ignoring:', message);
+                    return;
+                }
+
                 // แสดงเฉพาะข้อความจากแอดมินหรือบอท (ไม่ต้องแสดงข้อความของผู้ใช้เอง)
-                if (message.sender === 'admin' || message.sender === 'bot') {
+                if (message.sender === 'admin') {
                     // ข้อความจากแอดมิน
-                    if (message.sender === 'admin') {
-                        const messageElement = document.createElement('div');
-                        messageElement.className = 'message bot-message';
-                        messageElement.innerHTML = `
-                            <div class="message-avatar">
-                                <img src="assets/icons/chat-avatar.jpg" alt="Admin">
-                            </div>
-                            <div class="message-content admin-message">
-                                <p>${escapeHTML(message.text)}</p>
-                                <small>${escapeHTML(message.adminName || 'Admin')}</small>
-                            </div>
-                        `;
+                    const messageElement = document.createElement('div');
+                    messageElement.className = 'message bot-message';
+                    messageElement.setAttribute('data-message-id', message.timestamp);
+                    messageElement.innerHTML = `
+                        <div class="message-avatar">
+                            <img src="assets/icons/chat-avatar.jpg" alt="Admin">
+                        </div>
+                        <div class="message-content admin-message">
+                            <p>${escapeHTML(message.text)}</p>
+                            <small>${escapeHTML(message.adminName || 'Admin')}</small>
+                        </div>
+                    `;
 
-                        elements.chatMessages.appendChild(messageElement);
-                        scrollToBottom();
+                    elements.chatMessages.appendChild(messageElement);
+                    scrollToBottom();
+                }
+                // ข้อความจากบอท
+                else if (message.sender === 'bot') {
+                    // จัดการกับ payload ถ้ามี
+                    if (message.payload) {
+                        const richContentHtml = processRichContent(message.payload);
+
+                        if (richContentHtml) {
+                            const messageElement = document.createElement('div');
+                            messageElement.className = 'message bot-message';
+                            messageElement.setAttribute('data-message-id', message.timestamp);
+                            messageElement.innerHTML = `
+                                <div class="message-avatar">
+                                    <img src="assets/icons/chat-avatar.jpg" alt="Bot">
+                                </div>
+                                <div class="message-content">
+                                    ${richContentHtml}
+                                </div>
+                            `;
+
+                            elements.chatMessages.appendChild(messageElement);
+                            addInteractiveListeners(messageElement);
+                            scrollToBottom();
+                        }
                     }
-                    // ข้อความจากบอท
-                    else if (message.sender === 'bot') {
-                        // จัดการกับ payload ถ้ามี
-                        if (message.payload) {
-                            const richContentHtml = processRichContent(message.payload);
 
-                            if (richContentHtml) {
-                                const messageElement = document.createElement('div');
-                                messageElement.className = 'message bot-message';
-                                messageElement.innerHTML = `
-                                    <div class="message-avatar">
-                                        <img src="assets/icons/chat-avatar.jpg" alt="Bot">
-                                    </div>
-                                    <div class="message-content">
-                                        ${richContentHtml}
-                                    </div>
-                                `;
-
-                                elements.chatMessages.appendChild(messageElement);
-                                addInteractiveListeners(messageElement);
-                                scrollToBottom();
-                            }
-                        }
-
-                        // ถ้ามีข้อความธรรมดา
-                        if (message.text) {
-                            addMessage('bot', message.text);
-                        }
+                    // ถ้ามีข้อความธรรมดา
+                    if (message.text) {
+                        addMessage('bot', message.text, '', message.timestamp);
                     }
                 }
             });
@@ -210,9 +221,10 @@
         const clickText = chipElement.dataset.text;
         if (!clickText) return;
 
-        addMessage('user', clickText);
+        const messageId = Date.now();
+        addMessage('user', clickText, '', messageId);
 
-        sendToDialogflow(clickText, chatState.sessionId)
+        sendToDialogflow(clickText, chatState.sessionId, messageId)
             .then(handleDialogflowResponse)
             .catch(handleDialogflowError);
     }
@@ -222,11 +234,13 @@
         const message = elements.chatInput.value.trim();
         if (!message) return;
 
-        // แสดงข้อความผู้ใช้
-        addMessage('user', message);
+        const messageId = Date.now();
 
-        // ส่งข้อความไปยัง Dialogflow
-        sendToDialogflow(message, chatState.sessionId)
+        // แสดงข้อความผู้ใช้
+        addMessage('user', message, '', messageId);
+
+        // ส่งข้อความไปยัง Dialogflow พร้อม messageId
+        sendToDialogflow(message, chatState.sessionId, messageId)
             .then(handleDialogflowResponse)
             .catch(handleDialogflowError);
 
@@ -241,9 +255,18 @@
     }
 
     // เพิ่มข้อความลงในช่องแชท
-    function addMessage(sender, text) {
+    function addMessage(sender, text, senderName = '', messageId = null) {
+        const timestamp = messageId || Date.now();
+
+        // ตรวจสอบว่ามีข้อความนี้อยู่แล้วหรือไม่
+        if (isMessageDuplicate(timestamp)) {
+            console.log('Duplicate message, not adding:', text);
+            return;
+        }
+
         const messageElement = document.createElement('div');
         messageElement.className = `message ${sender}-message`;
+        messageElement.setAttribute('data-message-id', timestamp);
         messageElement.innerHTML = `
             <div class="message-avatar">
                 ${sender === 'user'
@@ -263,7 +286,7 @@
             chatState.socket.emit('new_message', {
                 sender: 'user',
                 text: text,
-                timestamp: Date.now(),
+                timestamp: timestamp,
                 room: chatState.sessionId
             });
         }
@@ -290,7 +313,9 @@
 
         // แสดงข้อความตอบกลับ
         if (response.message) {
-            addMessage('bot', response.message);
+            // ใช้ messageId จากฝั่ง server ถ้ามี
+            const botMessageId = response.messageId || Date.now();
+            addMessage('bot', response.message, '', botMessageId);
         }
 
         // จัดการ Rich Content
@@ -300,8 +325,17 @@
 
             if (richContentHtml) {
                 console.log('Rich content HTML generated:', richContentHtml);
+                const payloadMessageId = (response.messageId ? response.messageId + 1 : Date.now()) + 1;
+
+                // ตรวจสอบว่ามีข้อความนี้อยู่แล้วหรือไม่
+                if (isMessageDuplicate(payloadMessageId)) {
+                    console.log('Duplicate rich content, not adding');
+                    return;
+                }
+
                 const messageElement = document.createElement('div');
                 messageElement.className = 'message bot-message';
+                messageElement.setAttribute('data-message-id', payloadMessageId);
                 messageElement.innerHTML = `
                     <div class="message-avatar">
                         <img src="assets/icons/chat-avatar.jpg" alt="Bot">
@@ -379,7 +413,7 @@
         else {
             // ตรวจสอบว่ามี icon และ color หรือไม่
             const icon = item.icon ? `<i class="fa-solid fa-${escapeHTML(item.icon)}"></i>` : '';
-            const colorClass = item.color ? `chat-btn-${escapeHTML(item.color)}` : 'chat-btn-primary';
+            const colorClass = item.color ? `chat-btn-${escapeHTML(option.color)}` : 'chat-btn-primary';
             const buttonText = item.text || "Button";
 
             return `
@@ -520,9 +554,10 @@
                 const clickText = this.dataset.text;
                 if (clickText) {
                     console.log('Button clicked:', clickText);
-                    addMessage('user', clickText);
+                    const messageId = Date.now();
+                    addMessage('user', clickText, '', messageId);
 
-                    sendToDialogflow(clickText, chatState.sessionId)
+                    sendToDialogflow(clickText, chatState.sessionId, messageId)
                         .then(handleDialogflowResponse)
                         .catch(handleDialogflowError);
                 }
@@ -536,9 +571,10 @@
                 const clickText = this.dataset.text;
                 if (clickText) {
                     console.log('List item clicked:', clickText);
-                    addMessage('user', clickText);
+                    const messageId = Date.now();
+                    addMessage('user', clickText, '', messageId);
 
-                    sendToDialogflow(clickText, chatState.sessionId)
+                    sendToDialogflow(clickText, chatState.sessionId, messageId)
                         .then(handleDialogflowResponse)
                         .catch(handleDialogflowError);
                 }
@@ -552,9 +588,10 @@
                 const clickText = this.dataset.text;
                 if (clickText) {
                     console.log('Property card clicked:', clickText);
-                    addMessage('user', clickText);
+                    const messageId = Date.now();
+                    addMessage('user', clickText, '', messageId);
 
-                    sendToDialogflow(clickText, chatState.sessionId)
+                    sendToDialogflow(clickText, chatState.sessionId, messageId)
                         .then(handleDialogflowResponse)
                         .catch(handleDialogflowError);
                 }

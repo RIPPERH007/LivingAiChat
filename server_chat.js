@@ -69,7 +69,7 @@ io.on('connection', (socket) => {
   socket.on('new_message', (data) => {
     console.log('New message received via socket:', data);
     // ส่งข้อความไปยังทุกคนที่อยู่ในห้องเดียวกัน (ยกเว้นผู้ส่ง)
-    socket.to(data.room).emit('new_message', data);
+//    socket.to(data.room).emit('new_message', data);
   });
 
   // รับการอัปเดตสถานะ
@@ -92,26 +92,27 @@ app.post('/api/dialogflow', async (req, res) => {
     const { query, sessionId, userInfo } = req.body;
     const currentSessionId = sessionId || uuid.v4();
 
-   // ตรวจสอบและสร้างข้อมูลสำหรับ session นี้ถ้ายังไม่มี
-   if (!sessionData[currentSessionId]) {
-     sessionData[currentSessionId] = {
-       userInfo: {
-         name: null,
-         email: null,
-         phone: null,
-         timestamp: Date.now()
-       }
-     };
-   }
+    // ตรวจสอบและสร้างข้อมูลสำหรับ session
+    if (!sessionData[currentSessionId]) {
+      sessionData[currentSessionId] = {
+        userInfo: {
+          name: null,
+          email: null,
+          phone: null,
+          timestamp: Date.now()
+        }
+      };
+    }
 
-   // อัปเดตข้อมูลผู้ใช้ถ้ามีการส่งมา
-   if (userInfo) {
-     sessionData[currentSessionId].userInfo = {
-       ...sessionData[currentSessionId].userInfo,
-       ...userInfo,
-       timestamp: sessionData[currentSessionId].userInfo.timestamp
-     };
-   }
+    // อัปเดตข้อมูลผู้ใช้
+    if (userInfo) {
+      sessionData[currentSessionId].userInfo = {
+        ...sessionData[currentSessionId].userInfo,
+        ...userInfo,
+        timestamp: sessionData[currentSessionId].userInfo.timestamp
+      };
+    }
+
     // สร้าง session path
     const sessionPath = sessionClient.projectAgentSessionPath(
       process.env.DIALOGFLOW_PROJECT_ID,
@@ -124,7 +125,7 @@ app.post('/api/dialogflow', async (req, res) => {
       queryInput: {
         text: {
           text: query,
-          languageCode: 'th-TH', // ภาษาไทย (เปลี่ยนเป็น 'en-US' สำหรับภาษาอังกฤษ)
+          languageCode: 'th-TH',
         },
       },
     };
@@ -135,59 +136,43 @@ app.post('/api/dialogflow', async (req, res) => {
     const detectedIntent = result.intent ? result.intent.displayName : 'ไม่พบ intent';
 
     // บันทึกข้อความลงในประวัติการสนทนา
-   if (!conversations[currentSessionId]) {
-     conversations[currentSessionId] = {
-       messages: [],
-       status: 'waiting',
-       lastActivity: Date.now()
-     };
-   }
+    if (!conversations[currentSessionId]) {
+      conversations[currentSessionId] = {
+        messages: [],
+        status: 'waiting',
+        lastActivity: Date.now()
+      };
+    }
 
-   // สร้างข้อมูลข้อความของผู้ใช้
-   const userMessage = {
-     sender: 'user',
-     text: query,
-     timestamp: Date.now()
-   };
-
-   // บันทึกข้อความผู้ใช้
-   conversations[currentSessionId].messages.push(userMessage);
-
-   // ส่งข้อความผู้ใช้ผ่าน Socket.IO
-   io.to(currentSessionId).emit('new_message', {
-     ...userMessage,
-     room: currentSessionId
-   });
-
-   // สร้างข้อมูลข้อความของบอท
-   const botMessage = {
-     sender: 'bot',
-     text: result.fulfillmentText || 'ไม่เข้าใจคำถาม กรุณาลองใหม่อีกครั้ง',
-     intent: detectedIntent,
-     timestamp: Date.now()
-   };
-
-   // บันทึกข้อความบอท
-   conversations[currentSessionId].messages.push(botMessage);
-
-   // อัปเดตเวลากิจกรรมล่าสุด
-   conversations[currentSessionId].lastActivity = Date.now();
-
-    // แสดงข้อมูลดีบั๊กเพื่อช่วยในการพัฒนา
-    console.log('Query:', query);
-    console.log('Detected Intent:', detectedIntent);
-    console.log('Confidence:', result.intentDetectionConfidence);
-
-    // ส่งข้อความบอทผ่าน Socket.IO
-    io.to(currentSessionId).emit('new_message', {
-      ...botMessage,
+    // สร้างข้อมูลข้อความของผู้ใช้
+    const userMessage = {
+      sender: 'user',
+      text: query,
+      timestamp: Date.now(),
       room: currentSessionId
-    });
+    };
+
+    // สร้างข้อมูลข้อความของบอท
+    const botMessage = {
+      sender: 'bot',
+      text: result.fulfillmentText || 'ไม่เข้าใจคำถาม กรุณาลองใหม่อีกครั้ง',
+      intent: detectedIntent,
+      timestamp: Date.now(),
+      room: currentSessionId
+    };
+
+    // บันทึกข้อความ
+    conversations[currentSessionId].messages.push(userMessage);
+    conversations[currentSessionId].messages.push(botMessage);
+
+    // อัปเดตเวลากิจกรรมล่าสุด
+    conversations[currentSessionId].lastActivity = Date.now();
+
+    // ส่งข้อความทั้งหมดผ่าน Socket.IO
+    io.to(currentSessionId).emit('new_message', userMessage);
 
     // เก็บข้อมูลตาม intent ที่ตรวจพบ
-   if (detectedIntent === 'provide_user_info') {
-      // ถ้าเป็น intent ที่ผู้ใช้ให้ข้อมูลส่วนตัว
-      // ตรวจสอบและดึงข้อมูลจากพารามิเตอร์ของ Dialogflow
+    if (detectedIntent === 'provide_user_info') {
       const parameters = result.parameters.fields;
       if (parameters) {
         if (parameters.name && parameters.name.stringValue) {
@@ -201,18 +186,13 @@ app.post('/api/dialogflow', async (req, res) => {
         }
       }
     } else if (detectedIntent === 'request_agent') {
-      // ถ้าผู้ใช้ต้องการคุยกับเจ้าหน้าที่
       conversations[currentSessionId].status = 'waiting';
-      // ส่งการแจ้งเตือนไปยังแอดมิน
       io.emit('user_request_agent', {
         sessionId: currentSessionId,
         timestamp: Date.now()
       });
       console.log('User requested to speak with an agent. Session ID:', currentSessionId);
     }
-
-    // แสดงข้อมูลที่เก็บไว้ใน console
-    console.log('Session Data:', sessionData[currentSessionId]);
 
     // สร้าง response กลับไปยัง Live Chat
     const responseData = {
@@ -221,27 +201,23 @@ app.post('/api/dialogflow', async (req, res) => {
       intent: detectedIntent,
       confidence: result.intentDetectionConfidence,
       sessionId: currentSessionId,
-      sessionData: sessionData[currentSessionId] // ส่งข้อมูล step ทั้งหมดกลับไปด้วย
+      sessionData: sessionData[currentSessionId]
     };
 
-    // ตรวจสอบ custom payload และเพิ่มลงใน response
+    // ตรวจสอบ custom payload
     if (result.fulfillmentMessages && result.fulfillmentMessages.length > 0) {
       for (const message of result.fulfillmentMessages) {
-        // ตรวจสอบ payload fields ที่มาจาก Dialogflow
         if (message.payload) {
           const payload = struct.decode(message.payload);
           responseData.payload = payload;
-          // เพิ่ม payload ลงในข้อความบอท
-          botMessage.payload = payload;
 
-          // ส่งข้อความบอทที่มี payload ผ่าน Socket.IO อีกครั้ง
+          // ส่ง payload ผ่าน Socket.IO
           io.to(currentSessionId).emit('new_message', {
             ...botMessage,
-            room: currentSessionId,
             payload: payload
           });
 
-          break; // ใช้ payload แรกที่พบ
+          break;
         }
       }
     }
@@ -301,7 +277,8 @@ app.post('/api/admin/message', async (req, res) => {
     // ส่งข้อความผ่าน Socket.IO
     io.to(sessionId).emit('new_message', {
       ...messageData,
-      room: sessionId
+      room: sessionId    ,
+      type: messageData.sender // 'user', 'bot', หรือ 'admin'
     });
 
     // ส่งข้อมูลกลับไป

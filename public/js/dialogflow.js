@@ -10,13 +10,15 @@ const DIALOGFLOW_API_URL = 'http://localhost:3000/api/dialogflow';
  * ส่งข้อความไปยัง Dialogflow
  * @param {string} message - ข้อความที่ต้องการส่ง
  * @param {string} sessionId - ID ของเซสชัน
+ * @param {number} messageId - ID ของข้อความ (เพื่อป้องกันข้อความซ้ำ)
  * @returns {Promise} Promise ที่ส่งค่ากลับเป็นข้อมูลการตอบกลับจาก Dialogflow
  */
-async function sendToDialogflow(message, sessionId) {
+async function sendToDialogflow(message, sessionId, messageId = null) {
     try {
         const response = await axios.post(DIALOGFLOW_API_URL, {
             query: message,
-            sessionId: sessionId
+            sessionId: sessionId,
+            messageId: messageId
         });
 
         // ตรวจสอบว่ามีการตอบกลับและสถานะการตอบกลับถูกต้อง
@@ -25,7 +27,8 @@ async function sendToDialogflow(message, sessionId) {
                 message: response.data.message || '',
                 payload: response.data.payload || null,
                 intent: response.data.intent || '',
-                confidence: response.data.confidence || 0
+                confidence: response.data.confidence || 0,
+                messageId: response.data.messageId || null
             };
         } else {
             // กรณีที่ไม่มีการตอบกลับหรือมีข้อผิดพลาด
