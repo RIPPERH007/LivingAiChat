@@ -285,37 +285,36 @@ function addSystemMessage(text) {
 }
 
     // ส่งข้อความ
-   function sendMessage() {
-       const message = elements.chatInput.value.trim();
-       if (!message) return;
+function sendMessage() {
+    const message = elements.chatInput.value.trim();
+    if (!message) return;
 
-       const messageId = Date.now();
+    const messageId = Date.now();
 
-       // แสดงข้อความผู้ใช้
-       addMessage('user', message, '', messageId);
-       chatState.lastMessageSender = 'user';
+    // แสดงข้อความผู้ใช้
+    addMessage('user', message, '', messageId);
+    chatState.lastMessageSender = 'user';
 
-       // เคลียร์ช่องข้อความ
-       elements.chatInput.value = '';
+    // เคลียร์ช่องข้อความ
+    elements.chatInput.value = '';
 
-       // ถ้าแอดมินกำลังแอคทีฟ ให้ส่งข้อความผ่าน Socket.IO แต่ไม่ต้องส่งไป Dialogflow
-       if (chatState.adminActive) {
-           if (chatState.socket && chatState.socket.connected) {
-               chatState.socket.emit('new_message', {
-                   sender: 'user',
-                   text: message,
-                   timestamp: messageId,
-                   room: chatState.sessionId
-               });
-           }
-       } else {
-           // ส่งข้อความไปยัง Dialogflow ถ้าแอดมินไม่ได้แอคทีฟ
-           sendToDialogflow(message, chatState.sessionId, messageId)
-               .then(handleDialogflowResponse)
-               .catch(handleDialogflowError);
-       }
-   }
-
+    // ถ้าแอดมินกำลังแอคทีฟ ให้ส่งข้อความผ่าน Socket.IO แต่ไม่ต้องส่งไป Dialogflow
+    if (chatState.adminActive) {
+        if (chatState.socket && chatState.socket.connected) {
+            chatState.socket.emit('new_message', {
+                sender: 'user',
+                text: message,
+                timestamp: messageId,
+                room: chatState.sessionId
+            });
+        }
+    } else {
+        // ส่งข้อความไปยัง Dialogflow ถ้าแอดมินไม่ได้แอคทีฟ
+        sendToDialogflow(message, chatState.sessionId, messageId)
+            .then(handleDialogflowResponse)
+            .catch(handleDialogflowError);
+    }
+}
     // จัดการข้อผิดพลาดจาก Dialogflow
     function handleDialogflowError(error) {
         console.error('เกิดข้อผิดพลาดในการเชื่อมต่อ:', error);

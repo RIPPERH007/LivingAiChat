@@ -100,10 +100,53 @@ io.on('connection', (socket) => {
 
   // รับข้อความจากผู้ใช้หรือแอดมิน
   socket.on('new_message', (data) => {
-    console.log('New message received via socket:', data);
-    // ส่งข้อความไปยังทุกคนที่อยู่ในห้องเดียวกัน (ยกเว้นผู้ส่ง)
-//    socket.to(data.room).emit('new_message', data);
-  });
+      console.log('New message received via socket:', data);
+
+      // เพิ่มการตรวจสอบว่าเป็นข้อความจากผู้ใช้หรือแอดมิน
+
+        const isAdminActive = sessionData[data.room]?.adminActive === true ||
+                              conversations[data.room]?.adminActive === true;
+        if (isAdminActive === true) {
+
+      if (data.sender === 'user' ) {
+        // ส่งข้อความไปยังทุกคนที่อยู่ในห้องเดียวกัน (ยกเว้นผู้ส่ง)
+        socket.to(data.room).emit('new_message', data);
+
+        // บันทึกข้อความลงในประวัติการสนทนา
+        if (conversations[data.room]) {
+          conversations[data.room].messages.push({
+            sender: data.sender,
+            text: data.text,
+            timestamp: data.timestamp,
+            adminId: data.adminId,
+            adminName: data.adminName
+          });
+          conversations[data.room].lastActivity = Date.now();
+        }
+      }
+
+      // ไม่ส่งข้อความของบอทในกรณีที่แอดมินแอคทีฟ
+      if (data.sender === 'bot') {
+        // ตรวจสอบว่าแอดมินแอคทีฟหรือไม่
+
+        // ส่งข้อความของบอทเฉพาะเมื่อแอดมินไม่แอคทีฟ
+        if (!isAdminActive) {
+          socket.to(data.room).emit('new_message', data);
+
+          // บันทึกข้อความลงในประวัติการสนทนา
+          if (conversations[data.room]) {
+            conversations[data.room].messages.push({
+              sender: data.sender,
+              text: data.text,
+              timestamp: data.timestamp,
+              intent: data.intent
+            });
+            conversations[data.room].lastActivity = Date.now();
+          }
+        }
+      }
+      }
+    });
 
   // รับการอัปเดตสถานะ
   socket.on('status_update', (data) => {
@@ -152,13 +195,13 @@ app.post('/api/dialogflow', async (req, res) => {
 
     // ถ้าแอดมินแอคทีฟ ให้ส่งข้อความแจ้งเตือนว่าแอดมินกำลังให้บริการ
     if (isAdminActive) {
-      return res.json({
-        success: true,
-        message: 'แอดมินกำลังให้บริการคุณอยู่ กรุณารอสักครู่',
-        sessionId: currentSessionId,
-        adminActive: true
-      });
-    }
+          return res.json({
+            success: true,
+            message: 'แอดมินกำลังให้บริการคุณอยู่ กรุณารอสักครู่',
+            sessionId: currentSessionId,
+            adminActive: true
+          });
+        }
     // ตรวจสอบและสร้างข้อมูลสำหรับ session
     if (!sessionData[currentSessionId]) {
       sessionData[currentSessionId] = {
