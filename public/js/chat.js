@@ -54,9 +54,27 @@ const chatState = {
     }
 
     // เพิ่มฟังก์ชันตรวจสอบข้อความซ้ำ
-    function isMessageDuplicate(messageId) {
-        return document.querySelector(`.message[data-message-id="${messageId}"]`) !== null;
-    }
+   function isMessageDuplicate(messageId) {
+     // เพิ่มเช็คข้อความซ้ำตามเนื้อหาด้วย
+     const existingMsg = document.querySelector(`.message[data-message-id="${messageId}"]`);
+     if (existingMsg) {
+       return true;
+     }
+
+     // ตรวจสอบข้อความที่มีเวลาใกล้เคียงกัน (อาจเกิดจากความล่าช้าของเครือข่าย)
+     const messages = document.querySelectorAll('.message');
+     const currentTime = messageId;
+     const timeThreshold = 1000; // 1 วินาที
+
+     for (let i = 0; i < messages.length; i++) {
+       const msgId = parseInt(messages[i].getAttribute('data-message-id'));
+       if (Math.abs(currentTime - msgId) < timeThreshold) {
+         return true;
+       }
+     }
+
+     return false;
+   }
 
     // เชื่อมต่อกับ Socket.IO
     function connectSocket() {
@@ -285,36 +303,37 @@ function addSystemMessage(text) {
 }
 
     // ส่งข้อความ
-function sendMessage() {
-    const message = elements.chatInput.value.trim();
-    if (!message) return;
+    function sendMessage() {
+      const message = elements.chatInput.value.trim();
+      if (!message) return;
 
-    const messageId = Date.now();
+      const messageId = Date.now();
 
-    // แสดงข้อความผู้ใช้
-    addMessage('user', message, '', messageId);
-    chatState.lastMessageSender = 'user';
+      // แสดงข้อความผู้ใช้ในหน้าต่างแชทของผู้ใช้เอง (ไม่ส่งกลับมาจาก Socket)
+      addMessage('user', message, '', messageId);
+      chatState.lastMessageSender = 'user';
 
-    // เคลียร์ช่องข้อความ
-    elements.chatInput.value = '';
+      // เคลียร์ช่องข้อความ
+      elements.chatInput.value = '';
 
-    // ถ้าแอดมินกำลังแอคทีฟ ให้ส่งข้อความผ่าน Socket.IO แต่ไม่ต้องส่งไป Dialogflow
-    if (chatState.adminActive) {
-        if (chatState.socket && chatState.socket.connected) {
-            chatState.socket.emit('new_message', {
-                sender: 'user',
-                text: message,
-                timestamp: messageId,
-                room: chatState.sessionId
-            });
-        }
-    } else {
-        // ส่งข้อความไปยัง Dialogflow ถ้าแอดมินไม่ได้แอคทีฟ
+      // ส่งข้อความผ่าน Socket.IO (จะถูกส่งต่อไปให้แอดมินหรือบอท)
+      if (chatState.socket && chatState.socket.connected) {
+        chatState.socket.emit('new_message', {
+          sender: 'user',
+          text: message,
+          timestamp: messageId,
+          room: chatState.sessionId
+        });
+      }
+
+      // ถ้าแอดมินกำลังแอคทีฟ ไม่ต้องส่งไป Dialogflow
+      if (!chatState.adminActive) {
+        // ส่งข้อความไปยัง Dialogflow
         sendToDialogflow(message, chatState.sessionId, messageId)
-            .then(handleDialogflowResponse)
-            .catch(handleDialogflowError);
+          .then(handleDialogflowResponse)
+          .catch(handleDialogflowError);
+      }
     }
-}
     // จัดการข้อผิดพลาดจาก Dialogflow
     function handleDialogflowError(error) {
         console.error('เกิดข้อผิดพลาดในการเชื่อมต่อ:', error);
@@ -323,17 +342,19 @@ function sendMessage() {
 
     // เพิ่มข้อความลงในช่องแชท
     function addMessage(sender, text, senderName = '', messageId = null) {
-        const timestamp = messageId || Date.now();
+         if (!elements.chatMessages) return;
 
-        // ตรวจสอบว่ามีข้อความนี้อยู่แล้วหรือไม่
-        if (isMessageDuplicate(timestamp)) {
+          const timestamp = messageId || Date.now();
+
+          // ตรวจสอบว่ามีข้อความนี้อยู่แล้วหรือไม่
+          if (isMessageDuplicate(timestamp)) {
             console.log('Duplicate message, not adding:', text);
             return;
-        }
+          }
 
-        const messageElement = document.createElement('div');
-        messageElement.className = `message ${sender}-message`;
-        messageElement.setAttribute('data-message-id', timestamp);
+          const messageElement = document.createElement('div');
+          messageElement.className = `message ${sender}-message`;
+          messageElement.setAttribute('data-message-id', timestamp);
         messageElement.innerHTML = `
             <div class="message-avatar">
                 ${sender === 'user'
@@ -378,12 +399,18 @@ function sendMessage() {
     function handleDialogflowResponse(response) {
         console.log('Handling Dialogflow response:', response);
 
-        // แสดงข้อความตอบกลับ
-        if (response.message) {
+          // เพิ่มการตรวจสอบว่าแอดมินแอคทีฟหรือไม่
+          if (chatState.adminActive) {
+            console.log('Admin is active, ignoring bot response');
+            return;
+          }
+
+          // แสดงข้อความตอบกลับ
+          if (response.message) {
             // ใช้ messageId จากฝั่ง server ถ้ามี
             const botMessageId = response.messageId || Date.now();
             addMessage('bot', response.message, '', botMessageId);
-        }
+          }
 
         // จัดการ Rich Content
         if (response.payload) {

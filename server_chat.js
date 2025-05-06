@@ -60,38 +60,38 @@ io.on('connection', (socket) => {
   });
 
 // รับการเปลี่ยนสถานะแอดมิน
-  socket.on('admin_status_change', (data) => {
-    console.log('Admin status change received:', data);
+// ในเหตุการณ์ admin_status_change
+socket.on('admin_status_change', (data) => {
+  console.log('Admin status change received:', data);
 
-    const { room: sessionId, adminActive, adminId, adminName } = data;
+  const { room: sessionId, adminActive, adminId, adminName } = data;
 
-    // ตรวจสอบความถูกต้องของข้อมูล
-    if (!sessionId) {
-      console.error('Invalid admin_status_change event: missing sessionId');
-      return;
+  // ตรวจสอบความถูกต้องของข้อมูล
+  if (!sessionId) {
+    console.error('Invalid admin_status_change event: missing sessionId');
+    return;
+  }
+
+  // อัปเดตข้อมูลการสนทนาให้สอดคล้องกัน
+  if (conversations[sessionId]) {
+    conversations[sessionId].adminActive = adminActive;
+    conversations[sessionId].lastActivity = Date.now();
+
+    // ถ้าแอดมินแอคทีฟ ให้อัปเดตสถานะเป็น answered
+    if (adminActive) {
+      conversations[sessionId].status = 'answered';
+      conversations[sessionId].agentId = adminId;
     }
+  }
 
-    // อัปเดตข้อมูลการสนทนา
-    if (conversations[sessionId]) {
-      conversations[sessionId].adminActive = adminActive;
-      conversations[sessionId].lastActivity = Date.now();
+  // อัปเดตข้อมูล session
+  if (sessionData[sessionId]) {
+    sessionData[sessionId].adminActive = adminActive;
+  }
 
-      // ถ้าแอดมินแอคทีฟ ให้อัปเดตสถานะเป็น answered
-      if (adminActive) {
-        conversations[sessionId].status = 'answered';
-        conversations[sessionId].agentId = adminId;
-      }
-    }
-
-    // อัปเดตข้อมูล session
-    if (sessionData[sessionId]) {
-      sessionData[sessionId].adminActive = adminActive;
-    }
-
-    // ส่งข้อมูลการเปลี่ยนสถานะไปยังทุกคนที่อยู่ในห้อง
-    io.to(sessionId).emit('admin_status_change', data);
-  });
-
+  // ส่งข้อมูลการเปลี่ยนสถานะไปยังทุกคนที่อยู่ในห้อง
+  io.to(sessionId).emit('admin_status_change', data);
+});
   // รับเมื่อผู้ใช้ออกจากห้อง
   socket.on('leave', (roomId) => {
     console.log(`Client ${socket.id} left room: ${roomId}`);
@@ -99,56 +99,59 @@ io.on('connection', (socket) => {
   });
 
   // รับข้อความจากผู้ใช้หรือแอดมิน
-  socket.on('new_message', (data) => {
-      console.log('New message received via socket:', data);
+    socket.on('new_message', (data) => {
+  console.log('New message received via socket:', data);
 
-      // เพิ่มการตรวจสอบว่าเป็นข้อความจากผู้ใช้หรือแอดมิน
+  // แก้ไขโค้ดในส่วนนี้
+  const isAdminActive = sessionData[data.room]?.adminActive === true ||
+                        conversations[data.room]?.adminActive === true;
 
-        const isAdminActive = sessionData[data.room]?.adminActive === true ||
-                              conversations[data.room]?.adminActive === true;
-        if (isAdminActive === true) {
+  // ตรวจสอบสถานะแอดมินและประเภทข้อความเพื่อป้องกันการซ้ำซ้อน
+  if (data.sender === 'user') {
+    // ส่งข้อความจากผู้ใช้ไปยังแอดมินเท่านั้น (ไม่ส่งกลับไปหาผู้ใช้)
+    socket.to(data.room).emit('new_message', data);
 
-      if (data.sender === 'user' ) {
-        // ส่งข้อความไปยังทุกคนที่อยู่ในห้องเดียวกัน (ยกเว้นผู้ส่ง)
-        socket.to(data.room).emit('new_message', data);
+    // บันทึกข้อความลงในประวัติการสนทนา
+    if (conversations[data.room]) {
+      conversations[data.room].messages.push({
+        sender: data.sender,
+        text: data.text,
+        timestamp: data.timestamp
+      });
+      conversations[data.room].lastActivity = Date.now();
+    }
+  } else if (data.sender === 'bot' && !isAdminActive) {
+    // ส่งข้อความของบอทเฉพาะเมื่อแอดมินไม่แอคทีฟ
+    socket.to(data.room).emit('new_message', data);
 
-        // บันทึกข้อความลงในประวัติการสนทนา
-        if (conversations[data.room]) {
-          conversations[data.room].messages.push({
-            sender: data.sender,
-            text: data.text,
-            timestamp: data.timestamp,
-            adminId: data.adminId,
-            adminName: data.adminName
-          });
-          conversations[data.room].lastActivity = Date.now();
-        }
-      }
+    // บันทึกข้อความบอทลงในประวัติการสนทนา
+    if (conversations[data.room]) {
+      conversations[data.room].messages.push({
+        sender: data.sender,
+        text: data.text,
+        timestamp: data.timestamp,
+        intent: data.intent,
+        payload: data.payload
+      });
+      conversations[data.room].lastActivity = Date.now();
+    }
+  } else if (data.sender === 'admin') {
+    // ส่งข้อความจากแอดมินไปหาผู้ใช้
+    socket.to(data.room).emit('new_message', data);
 
-      // ไม่ส่งข้อความของบอทในกรณีที่แอดมินแอคทีฟ
-      if (data.sender === 'bot') {
-        // ตรวจสอบว่าแอดมินแอคทีฟหรือไม่
-
-        // ส่งข้อความของบอทเฉพาะเมื่อแอดมินไม่แอคทีฟ
-        if (!isAdminActive) {
-          socket.to(data.room).emit('new_message', data);
-
-          // บันทึกข้อความลงในประวัติการสนทนา
-          if (conversations[data.room]) {
-            conversations[data.room].messages.push({
-              sender: data.sender,
-              text: data.text,
-              timestamp: data.timestamp,
-              intent: data.intent
-            });
-            conversations[data.room].lastActivity = Date.now();
-          }
-        }
-      }
-      }
-    });
-
-  // รับการอัปเดตสถานะ
+    // บันทึกข้อความแอดมินลงในประวัติการสนทนา
+    if (conversations[data.room]) {
+      conversations[data.room].messages.push({
+        sender: data.sender,
+        text: data.text,
+        timestamp: data.timestamp,
+        adminId: data.adminId,
+        adminName: data.adminName
+      });
+      conversations[data.room].lastActivity = Date.now();
+    }
+  }
+});  // รับการอัปเดตสถานะ
   socket.on('status_update', (data) => {
     console.log('Status update received:', data);
     socket.to(data.room).emit('status_update', data);
