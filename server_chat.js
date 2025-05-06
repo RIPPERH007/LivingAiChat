@@ -111,6 +111,28 @@ io.on('connection', (socket) => {
     socket.to(data.room).emit('status_update', data);
   });
 
+  // รับการร้องขอค้นหาอสังหาริมทรัพย์
+  socket.on('request_property_search', async (data) => {
+    try {
+      const { sessionId, searchData } = data;
+
+      // เรียกใช้ API ค้นหา
+      const response = await axios.get('https://ownwebdev1.livinginsider.com/api/v1/test_order');
+
+      // ส่งผลลัพธ์กลับไปยังเฉพาะห้องที่ร้องขอ
+      socket.to(sessionId).emit('property_search_results', {
+        success: true,
+        data: response.data
+      });
+    } catch (error) {
+      console.error('Error processing property search:', error);
+      socket.to(data.sessionId).emit('property_search_results', {
+        success: false,
+        message: 'เกิดข้อผิดพลาดในการค้นหา'
+      });
+    }
+  });
+
   // ตัวจัดการเมื่อตัดการเชื่อมต่อ
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
@@ -146,6 +168,17 @@ app.post('/api/dialogflow', async (req, res) => {
           phone: null,
           timestamp: Date.now()
         }
+      };
+    }
+
+    if (!sessionData[currentSessionId].propertySearch) {
+      sessionData[currentSessionId].propertySearch = {
+        province: null,         // จังหวัด (step 1)
+        facilities: null,       // สิ่งอำนวยความสะดวก (step 2)
+        price: null,            // ราคา (step 3)
+        transactionType: null,  // เช่า, ซื้อ, ขาย, เซ้ง (step 4)
+        location: null,         // ทำเลที่ตั้ง (step 5)
+        propertyType: null      // ประเภทอสังหาริมทรัพย์ (step 6)
       };
     }
 
@@ -238,6 +271,59 @@ app.post('/api/dialogflow', async (req, res) => {
       });
       console.log('User requested to speak with an agent. Session ID:', currentSessionId);
     }
+
+    if (detectedIntent === 'step1') {
+      // เก็บข้อมูลจังหวัด
+      const parameters = result.parameters.fields;
+      if (parameters && parameters.province) {
+        sessionData[currentSessionId].propertySearch.province = parameters.province.stringValue || null;
+      }
+    } else if (detectedIntent === 'step2') {
+      // เก็บข้อมูลสิ่งอำนวยความสะดวก
+      const parameters = result.parameters.fields;
+      if (parameters && parameters.facilities) {
+        sessionData[currentSessionId].propertySearch.facilities = parameters.facilities.stringValue || null;
+      }
+    } else if (detectedIntent === 'step3') {
+      // เก็บข้อมูลราคา
+      const parameters = result.parameters.fields;
+      if (parameters && parameters.price) {
+        sessionData[currentSessionId].propertySearch.price = parameters.price.stringValue || null;
+      }
+    } else if (detectedIntent === 'step4') {
+      // เก็บข้อมูลประเภทธุรกรรม
+      const parameters = result.parameters.fields;
+      if (parameters && parameters.transaction_type) {
+        sessionData[currentSessionId].propertySearch.transactionType = parameters.transaction_type.stringValue || null;
+      }
+    } else if (detectedIntent === 'step5') {
+      // เก็บข้อมูลทำเลที่ตั้ง
+      const parameters = result.parameters.fields;
+      if (parameters && parameters.location) {
+        sessionData[currentSessionId].propertySearch.location = parameters.location.stringValue || null;
+      }
+    } else if (detectedIntent === 'step6') {
+      // เก็บข้อมูลประเภทอสังหาริมทรัพย์
+      const parameters = result.parameters.fields;
+      if (parameters && parameters.property_type) {
+        sessionData[currentSessionId].propertySearch.propertyType = parameters.property_type.stringValue || null;
+      }
+
+      // ถ้าครบทั้ง 6 steps แล้ว ให้เพิ่มสถานะการค้นหา
+      const search = sessionData[currentSessionId].propertySearch;
+      if (search.province && search.facilities && search.price &&
+          search.transactionType && search.location && search.propertyType) {
+        sessionData[currentSessionId].propertySearch.isComplete = true;
+
+        // แจ้งเตือนแอดมินว่ามีการค้นหาใหม่
+        io.emit('new_property_search', {
+          sessionId: currentSessionId,
+          searchData: sessionData[currentSessionId].propertySearch,
+          timestamp: Date.now()
+        });
+      }
+    }
+
 
     // สร้าง response กลับไปยัง Live Chat
     const responseData = {
@@ -576,6 +662,54 @@ app.get('/api/test', (req, res) => {
 app.get('/api/test/socket', (req, res) => {
   io.emit('test', { message: 'This is a test message', timestamp: Date.now() });
   res.json({ message: 'Socket.IO test message sent successfully!' });
+});
+
+app.post('/api/property/search', async (req, res) => {
+  try {
+    const { searchData } = req.body;
+
+    // จำลองการเรียกใช้ API จริง
+    const response = await axios.get('https://ownwebdev1.livinginsider.com/api/v1/test_order');
+
+    // ส่งข้อมูลกลับไป
+    res.json({
+      success: true,
+      data: response.data
+    });
+  } catch (error) {
+    console.error('Error searching for properties:', error);
+    res.status(500).json({
+      success: false,
+      message: 'เกิดข้อผิดพลาดในการค้นหาอสังหาริมทรัพย์'
+    });
+  }
+});
+
+/**
+ * เพิ่ม API endpoint สำหรับการอัปเดตข้อมูลการค้นหา
+ */
+app.patch('/api/property/search/:sessionId', (req, res) => {
+  const { sessionId } = req.params;
+  const { searchData } = req.body;
+
+  if (!sessionData[sessionId]) {
+    return res.status(404).json({
+      success: false,
+      message: 'ไม่พบข้อมูล session'
+    });
+  }
+
+  // อัปเดตข้อมูลการค้นหา
+  sessionData[sessionId].propertySearch = {
+    ...sessionData[sessionId].propertySearch,
+    ...searchData
+  };
+
+  res.json({
+    success: true,
+    message: 'อัปเดตข้อมูลการค้นหาสำเร็จ',
+    data: sessionData[sessionId].propertySearch
+  });
 });
 
 /**
