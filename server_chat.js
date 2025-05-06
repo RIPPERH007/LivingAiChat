@@ -59,6 +59,39 @@ io.on('connection', (socket) => {
     socket.join(roomId);
   });
 
+// รับการเปลี่ยนสถานะแอดมิน
+  socket.on('admin_status_change', (data) => {
+    console.log('Admin status change received:', data);
+
+    const { room: sessionId, adminActive, adminId, adminName } = data;
+
+    // ตรวจสอบความถูกต้องของข้อมูล
+    if (!sessionId) {
+      console.error('Invalid admin_status_change event: missing sessionId');
+      return;
+    }
+
+    // อัปเดตข้อมูลการสนทนา
+    if (conversations[sessionId]) {
+      conversations[sessionId].adminActive = adminActive;
+      conversations[sessionId].lastActivity = Date.now();
+
+      // ถ้าแอดมินแอคทีฟ ให้อัปเดตสถานะเป็น answered
+      if (adminActive) {
+        conversations[sessionId].status = 'answered';
+        conversations[sessionId].agentId = adminId;
+      }
+    }
+
+    // อัปเดตข้อมูล session
+    if (sessionData[sessionId]) {
+      sessionData[sessionId].adminActive = adminActive;
+    }
+
+    // ส่งข้อมูลการเปลี่ยนสถานะไปยังทุกคนที่อยู่ในห้อง
+    io.to(sessionId).emit('admin_status_change', data);
+  });
+
   // รับเมื่อผู้ใช้ออกจากห้อง
   socket.on('leave', (roomId) => {
     console.log(`Client ${socket.id} left room: ${roomId}`);
@@ -91,7 +124,19 @@ app.post('/api/dialogflow', async (req, res) => {
   try {
     const { query, sessionId, userInfo } = req.body;
     const currentSessionId = sessionId || uuid.v4();
+// ตรวจสอบว่ามีแอดมินแอคทีฟหรือไม่
+    const isAdminActive = sessionData[currentSessionId]?.adminActive === true ||
+                          conversations[currentSessionId]?.adminActive === true;
 
+    // ถ้าแอดมินแอคทีฟ ให้ส่งข้อความแจ้งเตือนว่าแอดมินกำลังให้บริการ
+    if (isAdminActive) {
+      return res.json({
+        success: true,
+        message: 'แอดมินกำลังให้บริการคุณอยู่ กรุณารอสักครู่',
+        sessionId: currentSessionId,
+        adminActive: true
+      });
+    }
     // ตรวจสอบและสร้างข้อมูลสำหรับ session
     if (!sessionData[currentSessionId]) {
       sessionData[currentSessionId] = {
@@ -246,7 +291,23 @@ app.post('/api/admin/message', async (req, res) => {
         message: 'ไม่พบข้อมูล session'
       });
     }
+if (sessionData[sessionId] && !sessionData[sessionId].adminActive) {
+      sessionData[sessionId].adminActive = true;
 
+      // ส่งการแจ้งเตือนสถานะแอดมินผ่าน Socket.IO
+      io.to(sessionId).emit('admin_status_change', {
+        type: 'admin_status_change',
+        adminActive: true,
+        timestamp: Date.now(),
+        room: sessionId,
+        adminId,
+        adminName
+      });
+    }
+
+    if (conversations[sessionId]) {
+      conversations[sessionId].adminActive = true;
+    }
     // ตรวจสอบว่ามีข้อมูลการสนทนาหรือไม่
     if (!conversations[sessionId]) {
       conversations[sessionId] = {
@@ -424,7 +485,25 @@ app.patch('/api/conversations/:sessionId/status', (req, res) => {
   // อัปเดตสถานะ
   conversations[sessionId].status = status;
   conversations[sessionId].lastActivity = Date.now();
+// อัปเดตสถานะแอดมินถ้ามีการระบุ
+  if (adminActive !== undefined) {
+    if (sessionData[sessionId]) {
+      sessionData[sessionId].adminActive = adminActive;
+    }
 
+    if (conversations[sessionId]) {
+      conversations[sessionId].adminActive = adminActive;
+    }
+
+    // ส่งการแจ้งเตือนสถานะแอดมินผ่าน Socket.IO
+    io.to(sessionId).emit('admin_status_change', {
+      type: 'admin_status_change',
+      adminActive: adminActive,
+      timestamp: Date.now(),
+      room: sessionId,
+      adminId: adminId
+    });
+  }
   // อัปเดต adminId ถ้ามีการระบุ
   if (adminId) {
     conversations[sessionId].agentId = adminId;

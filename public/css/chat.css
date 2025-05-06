@@ -462,3 +462,66 @@ body {
 .socket-status.disconnected {
   background-color: rgba(220,53,69,0.3);
 }
+.admin-status-indicator {
+    background-color: #4b3f3a;
+    color: white;
+    padding: 8px 0;
+    font-size: 12px;
+    text-align: center;
+    width: 100%;
+    position: relative;
+    margin-top: -10px;
+    margin-bottom: 10px;
+    border-radius: 0 0 12px 12px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    animation: fadeIn 0.3s ease;
+}
+
+.admin-status-indicator.active {
+    background-color: #2bbd7e;
+}
+
+.admin-status-indicator::before {
+    content: "";
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background-color: #4caf50;
+    border-radius: 50%;
+    margin-right: 5px;
+    animation: pulse 1.5s infinite;
+}
+
+/* ข้อความระบบ */
+.message.system-message {
+    display: flex;
+    justify-content: center;
+    margin: 10px 0;
+    max-width: 100%;
+}
+
+.message-content.system-notification {
+    background-color: rgba(75, 63, 58, 0.1);
+    color: #4b3f3a;
+    padding: 6px 12px;
+    border-radius: 15px;
+    text-align: center;
+    font-size: 12px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* Animation */
+@keyframes pulse {
+    0% {
+        opacity: 0.4;
+        transform: scale(0.9);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.1);
+    }
+    100% {
+        opacity: 0.4;
+        transform: scale(0.9);
+    }
+}

@@ -13,15 +13,19 @@
         chatNowBtn: document.getElementById('chat-now-btn'),
         chatInputArea: document.getElementById('chat-input-area'),
         chatMinimizeBtn: document.querySelector('.chat-minimize-btn'),
-        socketStatus: document.getElementById('socket-status') // สถานะการเชื่อมต่อ Socket.IO
+        socketStatus: document.getElementById('socket-status'), // สถานะการเชื่อมต่อ Socket.IO
+        adminStatusIndicator: document.createElement('div') // สร้าง element ใหม่สำหรับแสดงสถานะแอดมิน
+
     };
 
     // สถานะการแชท
-    const chatState = {
-        isOpen: false,
-        sessionId: generateSessionId(),
-        socket: null
-    };
+const chatState = {
+    isOpen: false,
+    sessionId: generateSessionId(),
+    socket: null,
+    adminActive: false,  // เพิ่มสถานะการทำงานของแอดมิน
+    lastMessageSender: null // เพิ่มเพื่อติดตามว่าใครส่งข้อความล่าสุด
+};
 
     // การลงทะเบียนตัวจัดการเหตุการณ์
     function setupEventListeners() {
@@ -85,6 +89,22 @@
                 }
             });
 
+             chatState.socket.on('admin_status_change', (data) => {
+                    console.log('Admin status changed:', data);
+
+                    // อัปเดตสถานะแอดมิน
+                    chatState.adminActive = data.adminActive;
+
+                    // แสดงสถานะในแชท
+                    updateAdminStatusDisplay(data.adminActive, data.adminName);
+
+                    // เพิ่มข้อความแจ้งเตือนในแชท
+                    const message = data.adminActive
+                        ? `${data.adminName || 'แอดมิน'}กำลังให้บริการคุณ`
+                        : 'แชทบอทกลับมาให้บริการแล้ว';
+
+                    addMessage('system', message, '', Date.now());
+                });
             // เมื่อมีข้อความใหม่จากเซิร์ฟเวอร์
             chatState.socket.on('new_message', (message) => {
                 console.log('New message received via socket:', message);
@@ -183,7 +203,29 @@
             return false;
         }
     }
+function setupAdminStatusIndicator() {
+    elements.adminStatusIndicator.className = 'admin-status-indicator';
+    elements.adminStatusIndicator.style.display = 'none';
 
+    // เพิ่มเข้าไปใน chat header
+    const chatHeader = document.querySelector('.chat-header');
+    if (chatHeader) {
+        chatHeader.appendChild(elements.adminStatusIndicator);
+    }
+}
+// ฟังก์ชันอัปเดตการแสดงสถานะแอดมิน
+function updateAdminStatusDisplay(isActive, adminName) {
+    if (!elements.adminStatusIndicator) return;
+
+    if (isActive) {
+        elements.adminStatusIndicator.textContent = `${adminName || 'แอดมิน'}กำลังให้บริการ`;
+        elements.adminStatusIndicator.style.display = 'block';
+        elements.adminStatusIndicator.classList.add('active');
+    } else {
+        elements.adminStatusIndicator.style.display = 'none';
+        elements.adminStatusIndicator.classList.remove('active');
+    }
+}
     // สลับหน้าต่างแชท
     function toggleChat() {
         chatState.isOpen = !chatState.isOpen;
@@ -229,24 +271,50 @@
             .catch(handleDialogflowError);
     }
 
+
+function addSystemMessage(text) {
+    const messageElement = document.createElement('div');
+    messageElement.className = 'message system-message';
+    messageElement.innerHTML = `
+        <div class="message-content system-notification">
+            <p>${escapeHTML(text)}</p>
+        </div>
+    `;
+    elements.chatMessages.appendChild(messageElement);
+    scrollToBottom();
+}
+
     // ส่งข้อความ
-    function sendMessage() {
-        const message = elements.chatInput.value.trim();
-        if (!message) return;
+   function sendMessage() {
+       const message = elements.chatInput.value.trim();
+       if (!message) return;
 
-        const messageId = Date.now();
+       const messageId = Date.now();
 
-        // แสดงข้อความผู้ใช้
-        addMessage('user', message, '', messageId);
+       // แสดงข้อความผู้ใช้
+       addMessage('user', message, '', messageId);
+       chatState.lastMessageSender = 'user';
 
-        // ส่งข้อความไปยัง Dialogflow พร้อม messageId
-        sendToDialogflow(message, chatState.sessionId, messageId)
-            .then(handleDialogflowResponse)
-            .catch(handleDialogflowError);
+       // เคลียร์ช่องข้อความ
+       elements.chatInput.value = '';
 
-        // ล้างช่องข้อความ
-        elements.chatInput.value = '';
-    }
+       // ถ้าแอดมินกำลังแอคทีฟ ให้ส่งข้อความผ่าน Socket.IO แต่ไม่ต้องส่งไป Dialogflow
+       if (chatState.adminActive) {
+           if (chatState.socket && chatState.socket.connected) {
+               chatState.socket.emit('new_message', {
+                   sender: 'user',
+                   text: message,
+                   timestamp: messageId,
+                   room: chatState.sessionId
+               });
+           }
+       } else {
+           // ส่งข้อความไปยัง Dialogflow ถ้าแอดมินไม่ได้แอคทีฟ
+           sendToDialogflow(message, chatState.sessionId, messageId)
+               .then(handleDialogflowResponse)
+               .catch(handleDialogflowError);
+       }
+   }
 
     // จัดการข้อผิดพลาดจาก Dialogflow
     function handleDialogflowError(error) {
@@ -616,6 +684,7 @@
     function init() {
         console.log('Initializing chat with session ID:', chatState.sessionId);
         setupEventListeners();
+        setupAdminStatusIndicator(); // เพิ่มการตั้งค่า indicator
 
         // พยายามเชื่อมต่อกับ Socket.IO
         if (typeof io !== 'undefined') {
@@ -624,7 +693,43 @@
             console.log('Socket.IO library not available, will attempt to connect when chat is opened');
         }
     }
+    function addAdminStatusStyles() {
+        const style = document.createElement('style');
+        style.textContent = `
+            .admin-status-indicator {
+                position: absolute;
+                top: 50px;
+                left: 0;
+                right: 0;
+                text-align: center;
+                background-color: #6F6158;
+                color: white;
+                padding: 5px 0;
+                font-size: 12px;
+                z-index: 10;
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+            }
+
+            .message.system-message {
+                display: flex;
+                justify-content: center;
+                margin: 10px 0;
+                max-width: 100%;
+            }
+
+            .message-content.system-notification {
+                background-color: rgba(111, 97, 88, 0.1);
+                color: #6F6158;
+                padding: 5px 10px;
+                border-radius: 10px;
+                text-align: center;
+                font-size: 12px;
+            }
+        `;
+        document.head.appendChild(style);
+    }
 
     // เรียกใช้การเริ่มต้นเมื่อโหลดหน้าเว็บ
+    document.addEventListener('DOMContentLoaded', addAdminStatusStyles);
     document.addEventListener('DOMContentLoaded', init);
 })();
