@@ -53,45 +53,55 @@ const conversations = {};
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
 
+  // ทดสอบการเชื่อมต่อโดยส่งข้อความทดสอบไปยังไคลเอนต์ที่เพิ่งเชื่อมต่อ
+  socket.emit('test', { message: 'Socket connection test from server', timestamp: Date.now() });
+
+  // รับการทดสอบการเชื่อมต่อจากไคลเอนต์
+  socket.on('test_response', (data) => {
+    console.log('Test response received from client:', data);
+  });
+
   // รับการสมัครห้องแชท (เมื่อผู้ใช้หรือแอดมินเข้าร่วมห้อง)
   socket.on('join', (roomId) => {
     console.log(`Client ${socket.id} joined room: ${roomId}`);
     socket.join(roomId);
+    // แจ้งไคลเอนต์ว่าได้เข้าร่วมห้องแล้ว
+    socket.emit('joined_room', { room: roomId, timestamp: Date.now() });
   });
 
-// รับการเปลี่ยนสถานะแอดมิน
-// ในเหตุการณ์ admin_status_change
-socket.on('admin_status_change', (data) => {
-  console.log('Admin status change received:', data);
+  // รับการเปลี่ยนสถานะแอดมิน
+  socket.on('admin_status_change', (data) => {
+    console.log('Admin status change received:', data);
 
-  const { room: sessionId, adminActive, adminId, adminName } = data;
+    const { room: sessionId, adminActive, adminId, adminName } = data;
 
-  // ตรวจสอบความถูกต้องของข้อมูล
-  if (!sessionId) {
-    console.error('Invalid admin_status_change event: missing sessionId');
-    return;
-  }
-
-  // อัปเดตข้อมูลการสนทนาให้สอดคล้องกัน
-  if (conversations[sessionId]) {
-    conversations[sessionId].adminActive = adminActive;
-    conversations[sessionId].lastActivity = Date.now();
-
-    // ถ้าแอดมินแอคทีฟ ให้อัปเดตสถานะเป็น answered
-    if (adminActive) {
-      conversations[sessionId].status = 'answered';
-      conversations[sessionId].agentId = adminId;
+    // ตรวจสอบความถูกต้องของข้อมูล
+    if (!sessionId) {
+      console.error('Invalid admin_status_change event: missing sessionId');
+      return;
     }
-  }
 
-  // อัปเดตข้อมูล session
-  if (sessionData[sessionId]) {
-    sessionData[sessionId].adminActive = adminActive;
-  }
+    // อัปเดตข้อมูลการสนทนาให้สอดคล้องกัน
+    if (conversations[sessionId]) {
+      conversations[sessionId].adminActive = adminActive;
+      conversations[sessionId].lastActivity = Date.now();
 
-  // ส่งข้อมูลการเปลี่ยนสถานะไปยังทุกคนที่อยู่ในห้อง
-  io.to(sessionId).emit('admin_status_change', data);
-});
+      // ถ้าแอดมินแอคทีฟ ให้อัปเดตสถานะเป็น answered
+      if (adminActive) {
+        conversations[sessionId].status = 'answered';
+        conversations[sessionId].agentId = adminId;
+      }
+    }
+
+    // อัปเดตข้อมูล session
+    if (sessionData[sessionId]) {
+      sessionData[sessionId].adminActive = adminActive;
+    }
+
+    // ส่งข้อมูลการเปลี่ยนสถานะไปยังทุกคนที่อยู่ในห้อง
+    io.to(sessionId).emit('admin_status_change', data);
+  });
+
   // รับเมื่อผู้ใช้ออกจากห้อง
   socket.on('leave', (roomId) => {
     console.log(`Client ${socket.id} left room: ${roomId}`);
@@ -99,59 +109,70 @@ socket.on('admin_status_change', (data) => {
   });
 
   // รับข้อความจากผู้ใช้หรือแอดมิน
-    socket.on('new_message', (data) => {
-  console.log('New message received via socket:', data);
+  socket.on('new_message', (data) => {
+    console.log('New message received via socket:', data);
 
-  // แก้ไขโค้ดในส่วนนี้
-  const isAdminActive = sessionData[data.room]?.adminActive === true ||
-                        conversations[data.room]?.adminActive === true;
+    // เพิ่มการเช็คแบบชัดเจนเพื่อดีบั๊ก
+    console.log('Data room:', data.room);
+    console.log('Data sender:', data.sender);
+    console.log('Admin active status:', sessionData[data.room]?.adminActive);
 
-  // ตรวจสอบสถานะแอดมินและประเภทข้อความเพื่อป้องกันการซ้ำซ้อน
-  if (data.sender === 'user') {
-    // ส่งข้อความจากผู้ใช้ไปยังแอดมินเท่านั้น (ไม่ส่งกลับไปหาผู้ใช้)
-    socket.to(data.room).emit('new_message', data);
+    // ตรวจสอบสถานะแอดมิน
+    const isAdminActive = sessionData[data.room]?.adminActive === true ||
+                          conversations[data.room]?.adminActive === true;
 
-    // บันทึกข้อความลงในประวัติการสนทนา
-    if (conversations[data.room]) {
-      conversations[data.room].messages.push({
-        sender: data.sender,
-        text: data.text,
-        timestamp: data.timestamp
-      });
-      conversations[data.room].lastActivity = Date.now();
+    console.log('Is admin active:', isAdminActive);
+
+    if (data.sender === 'user') {
+      // ส่งข้อความจากผู้ใช้ไปยังแอดมินเท่านั้น (ไม่ส่งกลับไปหาผู้ใช้)
+      socket.to(data.room).emit('new_message', data);
+
+      // บันทึกข้อความลงในประวัติการสนทนา
+      if (conversations[data.room]) {
+        conversations[data.room].messages.push({
+          sender: data.sender,
+          text: data.text,
+          timestamp: data.timestamp
+        });
+        conversations[data.room].lastActivity = Date.now();
+      }
+    } else if (data.sender === 'bot') {
+      // แก้ไขตรงนี้: ส่งข้อความของบอทเสมอ ไม่ว่าแอดมินจะแอคทีฟหรือไม่
+      // เอาเงื่อนไข !isAdminActive ออก
+
+      console.log('Sending bot message to room:', data.room);
+      socket.to(data.room).emit('new_message', data);
+
+      // บันทึกข้อความบอทลงในประวัติการสนทนา
+      if (conversations[data.room]) {
+        conversations[data.room].messages.push({
+          sender: data.sender,
+          text: data.text,
+          timestamp: data.timestamp,
+          intent: data.intent,
+          payload: data.payload
+        });
+        conversations[data.room].lastActivity = Date.now();
+      }
+    } else if (data.sender === 'admin') {
+      // ส่งข้อความจากแอดมินไปหาผู้ใช้
+      socket.to(data.room).emit('new_message', data);
+
+      // บันทึกข้อความแอดมินลงในประวัติการสนทนา
+      if (conversations[data.room]) {
+        conversations[data.room].messages.push({
+          sender: data.sender,
+          text: data.text,
+          timestamp: data.timestamp,
+          adminId: data.adminId,
+          adminName: data.adminName
+        });
+        conversations[data.room].lastActivity = Date.now();
+      }
     }
-  } else if (data.sender === 'bot' && !isAdminActive) {
-    // ส่งข้อความของบอทเฉพาะเมื่อแอดมินไม่แอคทีฟ
-    socket.to(data.room).emit('new_message', data);
+  });
 
-    // บันทึกข้อความบอทลงในประวัติการสนทนา
-    if (conversations[data.room]) {
-      conversations[data.room].messages.push({
-        sender: data.sender,
-        text: data.text,
-        timestamp: data.timestamp,
-        intent: data.intent,
-        payload: data.payload
-      });
-      conversations[data.room].lastActivity = Date.now();
-    }
-  } else if (data.sender === 'admin') {
-    // ส่งข้อความจากแอดมินไปหาผู้ใช้
-    socket.to(data.room).emit('new_message', data);
-
-    // บันทึกข้อความแอดมินลงในประวัติการสนทนา
-    if (conversations[data.room]) {
-      conversations[data.room].messages.push({
-        sender: data.sender,
-        text: data.text,
-        timestamp: data.timestamp,
-        adminId: data.adminId,
-        adminName: data.adminName
-      });
-      conversations[data.room].lastActivity = Date.now();
-    }
-  }
-});  // รับการอัปเดตสถานะ
+  // รับการอัปเดตสถานะ
   socket.on('status_update', (data) => {
     console.log('Status update received:', data);
     socket.to(data.room).emit('status_update', data);
@@ -192,7 +213,7 @@ app.post('/api/dialogflow', async (req, res) => {
   try {
     const { query, sessionId, userInfo } = req.body;
     const currentSessionId = sessionId || uuid.v4();
-// ตรวจสอบว่ามีแอดมินแอคทีฟหรือไม่
+    // ตรวจสอบว่ามีแอดมินแอคทีฟหรือไม่
     const isAdminActive = sessionData[currentSessionId]?.adminActive === true ||
                           conversations[currentSessionId]?.adminActive === true;
 
@@ -292,8 +313,12 @@ app.post('/api/dialogflow', async (req, res) => {
     // อัปเดตเวลากิจกรรมล่าสุด
     conversations[currentSessionId].lastActivity = Date.now();
 
-    // ส่งข้อความทั้งหมดผ่าน Socket.IO
+    // ส่งข้อความผู้ใช้ผ่าน Socket.IO
     io.to(currentSessionId).emit('new_message', userMessage);
+
+    // เพิ่มบรรทัดนี้เพื่อส่งข้อความบอทไปยังผู้ใช้เสมอ
+    console.log('Sending bot text message via Socket.IO:', botMessage);
+    io.to(currentSessionId).emit('new_message', botMessage);
 
     // เก็บข้อมูลตาม intent ที่ตรวจพบ
     if (detectedIntent === 'provide_user_info') {
@@ -318,58 +343,57 @@ app.post('/api/dialogflow', async (req, res) => {
       console.log('User requested to speak with an agent. Session ID:', currentSessionId);
     }
 
-    if (detectedIntent === 'step1') {
-      // เก็บข้อมูลจังหวัด
-      const parameters = result.parameters.fields;
-      if (parameters && parameters.province) {
-        sessionData[currentSessionId].propertySearch.province = parameters.province.stringValue || null;
-      }
-    } else if (detectedIntent === 'step2') {
-      // เก็บข้อมูลสิ่งอำนวยความสะดวก
-      const parameters = result.parameters.fields;
-      if (parameters && parameters.facilities) {
-        sessionData[currentSessionId].propertySearch.facilities = parameters.facilities.stringValue || null;
-      }
-    } else if (detectedIntent === 'step3') {
-      // เก็บข้อมูลราคา
-      const parameters = result.parameters.fields;
-      if (parameters && parameters.price) {
-        sessionData[currentSessionId].propertySearch.price = parameters.price.stringValue || null;
-      }
-    } else if (detectedIntent === 'step4') {
-      // เก็บข้อมูลประเภทธุรกรรม
-      const parameters = result.parameters.fields;
-      if (parameters && parameters.transaction_type) {
-        sessionData[currentSessionId].propertySearch.transactionType = parameters.transaction_type.stringValue || null;
-      }
-    } else if (detectedIntent === 'step5') {
-      // เก็บข้อมูลทำเลที่ตั้ง
-      const parameters = result.parameters.fields;
-      if (parameters && parameters.location) {
-        sessionData[currentSessionId].propertySearch.location = parameters.location.stringValue || null;
-      }
-    } else if (detectedIntent === 'step6') {
-      // เก็บข้อมูลประเภทอสังหาริมทรัพย์
-      const parameters = result.parameters.fields;
-      if (parameters && parameters.property_type) {
-        sessionData[currentSessionId].propertySearch.propertyType = parameters.property_type.stringValue || null;
-      }
+   if (detectedIntent === 'step1') {
+     // เก็บข้อมูลจังหวัด
+     const parameters = result.parameters.fields;
+     if (parameters && parameters.province) {
+       sessionData[currentSessionId].propertySearch.province = parameters.province.stringValue || null;
+     }
+   } else if (detectedIntent === 'step2') {
+     // เก็บข้อมูลสิ่งอำนวยความสะดวก
+     const parameters = result.parameters.fields;
+     if (parameters && parameters.facilities) {
+       sessionData[currentSessionId].propertySearch.facilities = parameters.facilities.stringValue || null;
+     }
+   } else if (detectedIntent === 'step3') {
+     // เก็บข้อมูลราคา
+     const parameters = result.parameters.fields;
+     if (parameters && parameters.price) {
+       sessionData[currentSessionId].propertySearch.price = parameters.price.stringValue || null;
+     }
+   } else if (detectedIntent === 'step4') {
+     // เก็บข้อมูลประเภทธุรกรรม
+     const parameters = result.parameters.fields;
+     if (parameters && parameters.transaction_type) {
+       sessionData[currentSessionId].propertySearch.transactionType = parameters.transaction_type.stringValue || null;
+     }
+   } else if (detectedIntent === 'step5') {
+     // เก็บข้อมูลทำเลที่ตั้ง
+     const parameters = result.parameters.fields;
+     if (parameters && parameters.location) {
+       sessionData[currentSessionId].propertySearch.location = parameters.location.stringValue || null;
+     }
+   } else if (detectedIntent === 'step6') {
+     // เก็บข้อมูลประเภทอสังหาริมทรัพย์
+     const parameters = result.parameters.fields;
+     if (parameters && parameters.property_type) {
+       sessionData[currentSessionId].propertySearch.propertyType = parameters.property_type.stringValue || null;
+     }
 
-      // ถ้าครบทั้ง 6 steps แล้ว ให้เพิ่มสถานะการค้นหา
-      const search = sessionData[currentSessionId].propertySearch;
-      if (search.province && search.facilities && search.price &&
-          search.transactionType && search.location && search.propertyType) {
-        sessionData[currentSessionId].propertySearch.isComplete = true;
+     // ถ้าครบทั้ง 6 steps แล้ว ให้เพิ่มสถานะการค้นหา
+     const search = sessionData[currentSessionId].propertySearch;
+     if (search.province && search.facilities && search.price &&
+         search.transactionType && search.location && search.propertyType) {
+       sessionData[currentSessionId].propertySearch.isComplete = true;
 
-        // แจ้งเตือนแอดมินว่ามีการค้นหาใหม่
-        io.emit('new_property_search', {
-          sessionId: currentSessionId,
-          searchData: sessionData[currentSessionId].propertySearch,
-          timestamp: Date.now()
-        });
-      }
-    }
-
+       // แจ้งเตือนแอดมินว่ามีการค้นหาใหม่
+       io.emit('new_property_search', {
+         sessionId: currentSessionId,
+         searchData: sessionData[currentSessionId].propertySearch,
+         timestamp: Date.now()
+       });
+     }
+   }
 
     // สร้าง response กลับไปยัง Live Chat
     const responseData = {
@@ -389,10 +413,15 @@ app.post('/api/dialogflow', async (req, res) => {
           responseData.payload = payload;
 
           // ส่ง payload ผ่าน Socket.IO
-          io.to(currentSessionId).emit('new_message', {
+          const payloadMessage = {
             ...botMessage,
             payload: payload
-          });
+          };
+
+          console.log('Sending bot message with payload via Socket.IO:', payloadMessage);
+
+          // ใช้ io.to() เพื่อส่งไปยังทุกคนในห้อง
+          io.to(currentSessionId).emit('new_message', payloadMessage);
 
           break;
         }
@@ -408,7 +437,6 @@ app.post('/api/dialogflow', async (req, res) => {
     });
   }
 });
-
 /**
  * API สำหรับส่งข้อความจากแอดมิน
  */
@@ -730,10 +758,10 @@ app.post('/api/property/search', async (req, res) => {
     });
   }
 });
-
 /**
  * เพิ่ม API endpoint สำหรับการอัปเดตข้อมูลการค้นหา
  */
+// API สำหรับอัปเดตข้อมูลการค้นหา
 app.patch('/api/property/search/:sessionId', (req, res) => {
   const { sessionId } = req.params;
   const { searchData } = req.body;

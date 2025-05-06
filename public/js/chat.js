@@ -54,28 +54,29 @@ const chatState = {
     }
 
     // เพิ่มฟังก์ชันตรวจสอบข้อความซ้ำ
-   function isMessageDuplicate(messageId) {
-     // เพิ่มเช็คข้อความซ้ำตามเนื้อหาด้วย
-     const existingMsg = document.querySelector(`.message[data-message-id="${messageId}"]`);
-     if (existingMsg) {
-       return true;
-     }
+function isMessageDuplicate(messageId) {
+  // เพิ่มเช็คข้อความซ้ำตามเนื้อหาด้วย
+  const existingMsg = document.querySelector(`.message[data-message-id="${messageId}"]`);
+  if (existingMsg) {
+    console.log('Found duplicate message with id:', messageId);
+    return true;
+  }
 
-     // ตรวจสอบข้อความที่มีเวลาใกล้เคียงกัน (อาจเกิดจากความล่าช้าของเครือข่าย)
-     const messages = document.querySelectorAll('.message');
-     const currentTime = messageId;
-     const timeThreshold = 1000; // 1 วินาที
+  // ตรวจสอบข้อความที่มีเวลาใกล้เคียงกัน (อาจเกิดจากความล่าช้าของเครือข่าย)
+  const messages = document.querySelectorAll('.message');
+  const currentTime = messageId;
+  const timeThreshold = 1000; // 1 วินาที
 
-     for (let i = 0; i < messages.length; i++) {
-       const msgId = parseInt(messages[i].getAttribute('data-message-id'));
-       if (Math.abs(currentTime - msgId) < timeThreshold) {
-         return true;
-       }
-     }
+  for (let i = 0; i < messages.length; i++) {
+    const msgId = parseInt(messages[i].getAttribute('data-message-id'));
+    if (Math.abs(currentTime - msgId) < timeThreshold) {
+      console.log('Found time-adjacent duplicate message:', msgId, 'vs', currentTime);
+      return true;
+    }
+  }
 
-     return false;
-   }
-
+  return false;
+}
     // เชื่อมต่อกับ Socket.IO
     function connectSocket() {
         // ตรวจสอบว่า Socket.IO ถูกโหลดแล้วหรือไม่
@@ -96,16 +97,25 @@ const chatState = {
             chatState.socket.on('connect', () => {
                 console.log('Connected to Socket.IO with ID:', chatState.socket.id);
 
-                // เข้าร่วมห้องแชทตาม sessionId
-                chatState.socket.emit('join', chatState.sessionId);
+                    // เพิ่มการทดสอบการเชื่อมต่อ
+                    chatState.socket.on('test', (data) => {
+                      console.log('Socket test received:', data);
+                      chatState.socket.emit('test_response', { received: true, timestamp: Date.now() });
+                    });
 
-                // อัปเดตสถานะการเชื่อมต่อ (ถ้ามี)
-                if (elements.socketStatus) {
-                    elements.socketStatus.textContent = 'Connected';
-                    elements.socketStatus.classList.add('connected');
-                    elements.socketStatus.classList.remove('disconnected');
-                }
+                    // เข้าร่วมห้องแชทตาม sessionId
+                    chatState.socket.emit('join', chatState.sessionId);
+
+                    // อัปเดตสถานะการเชื่อมต่อ (ถ้ามี)
+                    if (elements.socketStatus) {
+                      elements.socketStatus.textContent = 'Connected';
+                      elements.socketStatus.classList.add('connected');
+                      elements.socketStatus.classList.remove('disconnected');
+                    }
             });
+            chatState.socket.on('joined_room', (data) => {
+                console.log('Successfully joined room:', data.room);
+              });
 
              chatState.socket.on('admin_status_change', (data) => {
                     console.log('Admin status changed:', data);
@@ -396,60 +406,59 @@ function addSystemMessage(text) {
      * จัดการการตอบกลับจาก Dialogflow และแสดงผล
      * @param {Object} response - ข้อมูลการตอบกลับจาก Dialogflow
      */
-    function handleDialogflowResponse(response) {
-        console.log('Handling Dialogflow response:', response);
+function handleDialogflowResponse(response) {
+  console.log('Handling Dialogflow response:', response);
 
-          // เพิ่มการตรวจสอบว่าแอดมินแอคทีฟหรือไม่
-          if (chatState.adminActive) {
-            console.log('Admin is active, ignoring bot response');
-            return;
-          }
+  // เพิ่มการตรวจสอบว่าแอดมินแอคทีฟหรือไม่
+  if (chatState.adminActive) {
+    console.log('Admin is active, but still showing bot response');
+    // ไม่ return ออกไปเพื่อให้แสดงข้อความบอท แม้ว่าแอดมินจะแอคทีฟ
+  }
 
-          // แสดงข้อความตอบกลับ
-          if (response.message) {
-            // ใช้ messageId จากฝั่ง server ถ้ามี
-            const botMessageId = response.messageId || Date.now();
-            addMessage('bot', response.message, '', botMessageId);
-          }
+  // แสดงข้อความตอบกลับ
+  if (response.message) {
+    // ใช้ messageId จากฝั่ง server ถ้ามี
+    const botMessageId = response.messageId || Date.now();
+    addMessage('bot', response.message, '', botMessageId);
+  }
 
-        // จัดการ Rich Content
-        if (response.payload) {
-            console.log('Processing payload:', response.payload);
-            const richContentHtml = processRichContent(response.payload);
+  // จัดการ Rich Content
+  if (response.payload) {
+    console.log('Processing payload:', response.payload);
+    const richContentHtml = processRichContent(response.payload);
 
-            if (richContentHtml) {
-                console.log('Rich content HTML generated:', richContentHtml);
-                const payloadMessageId = (response.messageId ? response.messageId + 1 : Date.now()) + 1;
+    if (richContentHtml) {
+      console.log('Rich content HTML generated:', richContentHtml);
+      const payloadMessageId = (response.messageId ? response.messageId + 1 : Date.now()) + 1;
 
-                // ตรวจสอบว่ามีข้อความนี้อยู่แล้วหรือไม่
-                if (isMessageDuplicate(payloadMessageId)) {
-                    console.log('Duplicate rich content, not adding');
-                    return;
-                }
+      // ตรวจสอบว่ามีข้อความนี้อยู่แล้วหรือไม่
+      if (isMessageDuplicate(payloadMessageId)) {
+        console.log('Duplicate rich content, not adding');
+        return;
+      }
 
-                const messageElement = document.createElement('div');
-                messageElement.className = 'message bot-message';
-                messageElement.setAttribute('data-message-id', payloadMessageId);
-                messageElement.innerHTML = `
-                    <div class="message-avatar">
-                        <img src="assets/icons/chat-avatar.jpg" alt="Bot">
-                    </div>
-                    <div class="message-content">
-                        ${richContentHtml}
-                    </div>
-                `;
+      const messageElement = document.createElement('div');
+      messageElement.className = 'message bot-message';
+      messageElement.setAttribute('data-message-id', payloadMessageId);
+      messageElement.innerHTML = `
+          <div class="message-avatar">
+              <img src="assets/icons/chat-avatar.jpg" alt="Bot">
+          </div>
+          <div class="message-content">
+              ${richContentHtml}
+          </div>
+      `;
 
-                // เพิ่มลงใน DOM
-                elements.chatMessages.appendChild(messageElement);
+      // เพิ่มลงใน DOM
+      elements.chatMessages.appendChild(messageElement);
 
-                // เพิ่ม Event Listeners สำหรับองค์ประกอบแบบโต้ตอบ
-                addInteractiveListeners(messageElement);
+      // เพิ่ม Event Listeners สำหรับองค์ประกอบแบบโต้ตอบ
+      addInteractiveListeners(messageElement);
 
-                scrollToBottom();
-            }
-        }
+      scrollToBottom();
     }
-
+  }
+}
     // ฟังก์ชันย่อยสำหรับการแสดงผล Rich Content
     function renderInfoCard(item) {
         return `
