@@ -347,7 +347,7 @@ function createStep4(parameters = {}) {
                                         floors: 2,
                                         bedrooms: 3,
                                         bathrooms: 2,
-                                        imageUrl: "assets/images/house1.jpg",
+                                        photo: "https://www.livinginsider.com/upload/topic2690/67bede1b547be_96108.jpeg",
                                         date: "1 วัน",
                                         views: 152
                                     },
@@ -360,7 +360,7 @@ function createStep4(parameters = {}) {
                                         floors: 2,
                                         bedrooms: 4,
                                         bathrooms: 3,
-                                        imageUrl: "assets/images/house2.jpg",
+                                          photo: "https://www.livinginsider.com/upload/project/65f92c7baee0d_5985.jpg",
                                         date: "3 วัน",
                                         views: 89
                                     },
@@ -373,7 +373,7 @@ function createStep4(parameters = {}) {
                                         floors: 2,
                                         bedrooms: 4,
                                         bathrooms: 3,
-                                        imageUrl: "assets/images/house3.jpg",
+                                        photo: "https://www.livinginsider.com/upload/project/675bee466eb71_3054.jpg",
                                         date: "5 วัน",
                                         views: 120
                                     }
@@ -409,7 +409,7 @@ function createStep5(parameters = {}) {
             bathrooms: 2,
             description: "บ้านเดี่ยว 2 ชั้น สภาพใหม่ ตกแต่งสวย เดินทางสะดวก ใกล้ถนนใหญ่ ใกล้ห้างสรรพสินค้า และโรงพยาบาล",
             features: ["เฟอร์นิเจอร์ Built-in", "เครื่องปรับอากาศ 4 เครื่อง", "ระบบรักษาความปลอดภัย 24 ชม.", "สวนส่วนกลาง"],
-            imageUrl: "assets/images/house1.jpg"
+            photo: "https://www.livinginsider.com/upload/topic2690/67bede1b547be_96108.jpeg"
         },
         'P002': {
             id: "P002",
@@ -422,7 +422,7 @@ function createStep5(parameters = {}) {
             bathrooms: 3,
             description: "บ้านเดี่ยวสไตล์โมเดิร์น ตกแต่งสวยงาม เดินทางสะดวก ใกล้รถไฟฟ้า BTS บางจาก เพียง 800 เมตร",
             features: ["เฟอร์นิเจอร์ Built-in ครบทั้งหลัง", "เครื่องปรับอากาศทุกห้อง", "ระบบ Smart Home", "สวนส่วนตัว"],
-            imageUrl: "assets/images/house2.jpg"
+            photo: "https://www.livinginsider.com/upload/project/65f92c7baee0d_5985.jpg"
         },
         'P003': {
             id: "P003",
@@ -435,7 +435,7 @@ function createStep5(parameters = {}) {
             bathrooms: 3,
             description: "บ้านเดี่ยวในโครงการหรู พร้อมสระว่ายน้ำส่วนตัว บรรยากาศร่มรื่น เงียบสงบ เหมาะสำหรับครอบครัวใหญ่",
             features: ["สระว่ายน้ำส่วนตัว", "ห้องทำงาน", "ห้องอเนกประสงค์", "พื้นที่จอดรถ 2 คัน", "ระบบรักษาความปลอดภัย 24 ชม."],
-            imageUrl: "assets/images/house3.jpg"
+            photo: "https://www.livinginsider.com/upload/project/675bee466eb71_3054.jpg"
         }
     };
 

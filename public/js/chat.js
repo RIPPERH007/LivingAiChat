@@ -513,64 +513,40 @@ function sendMessage() {
         `;
     }
 
-    function renderPropertyList(properties) {
-        return `
-            <div class="property-list">
-                ${properties.map(property => {
-            // จัดการวันที่ (ถ้ามี)
-            const dateDisplay = property.date ? property.date : '';
-            // จัดการจำนวนการดู (ถ้ามี)
-            const viewsDisplay = property.views ? property.views : '';
-            // สร้างข้อความสำหรับส่งเมื่อคลิก
-            const clickText = `ขอดูรายละเอียดของอสังหาริมทรัพย์ ${property.id}`;
+function renderPropertyList(properties) {
+  return `
+    <div class="property-list">
+      ${properties.map(property => {
+        // กำหนดประเภทการ์ด (ซื้อ/เช่า)
+        const tagType = property.tag || 'ขาย';
+        const isRent = tagType.includes('เช่า');
+        const tagClass = isRent ? 'property-tag-rent' : 'property-tag-buy';
+        const tagIcon = isRent ? 'home' : 'tag';
 
-            return `
-                    <div class="property-card" data-property-id="${property.id}" data-text="${escapeHTML(clickText)}">
-                        <div class="property-image">
-                            <img src="${property.imageUrl}" alt="${property.title}">
-                            <div class="property-badge">ขาย</div>
-                            ${(dateDisplay || viewsDisplay) ? `
-                            <div class="property-date-views">
-                                ${dateDisplay ? `<div class="property-date">${dateDisplay}</div>` : ''}
-                                ${viewsDisplay ? `
-                                <div class="property-views">
-                                    <i class="fa-solid fa-eye"></i> ${viewsDisplay}
-                                </div>
-                                ` : ''}
-                            </div>
-                            ` : ''}
-                        </div>
-                        <div class="property-info">
-                            <div class="property-price">฿${property.price.toLocaleString()}</div>
-                            <div class="property-title">${property.title}</div>
-                            <div class="property-location">
-                                <i class="fa-solid fa-location-dot"></i> ${property.location}
-                            </div>
-                            <div class="property-amenities">
-                                <div class="amenity-item">
-                                    <i class="fa-solid fa-chart-area"></i>
-                                    <span>${property.area} ตร.ว.</span>
-                                </div>
-                                <div class="amenity-item">
-                                    <i class="fa-solid fa-layer-group"></i>
-                                    <span>ชั้น ${property.floors}</span>
-                                </div>
-                                <div class="amenity-item">
-                                    <i class="fa-solid fa-bed"></i>
-                                    <span>${property.bedrooms} ห้องนอน</span>
-                                </div>
-                                <div class="amenity-item">
-                                    <i class="fa-solid fa-bath"></i>
-                                    <span>${property.bathrooms} ห้องน้ำ</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    `;
-        }).join('')}
+        // สร้างข้อความสำหรับส่งเมื่อคลิก
+        const clickText = `ขอดูรายละเอียดของอสังหาริมทรัพย์ ${property.id}`;
+
+        return `
+          <div class="property-card" data-property-id="${property.id}" data-text="${escapeHTML(clickText)}">
+            <div class="property-image">
+              <img src="${property.photo}" alt="${property.title}">
+              <div class="property-type-badge ${tagClass}">
+                <i class="fas fa-${tagIcon}"></i> ${tagType}
+              </div>
             </div>
+            <div class="property-details">
+              <div class="property-title">${tagType} ${property.title}</div>
+              <div class="property-location">
+                <i class="fas fa-map-marker-alt"></i> ${property.location || property.zone || 'ไม่ระบุที่ตั้ง'}
+              </div>
+              <div class="property-price">฿${typeof property.price === 'number' ? property.price.toLocaleString() : property.price}</div>
+            </div>
+          </div>
         `;
-    }
+      }).join('')}
+    </div>
+  `;
+}
 
     /**
      * ประมวลผล Rich Content จาก Dialogflow

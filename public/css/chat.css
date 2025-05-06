@@ -510,6 +510,99 @@ body {
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
+/* เพิ่ม CSS นี้ในไฟล์ chat.css หรือสร้างไฟล์ใหม่ */
+
+/* รูปแบบการ์ดอสังหาริมทรัพย์ใหม่ */
+.property-card {
+  background-color: white;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  width: 100%;
+}
+
+.property-image {
+  position: relative;
+  width: 100%;
+  height: 150px;
+  overflow: hidden;
+}
+
+.property-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.property-details {
+  padding: 10px;
+  position: relative;
+}
+
+.property-type-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background-color: rgba(74, 74, 74, 0.8);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+}
+
+.property-type-badge i {
+  margin-right: 5px;
+}
+
+.property-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #d6aa5c;
+  margin-bottom: 5px;
+}
+
+.property-location {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 5px;
+}
+
+.property-location i {
+  color: #666;
+  margin-right: 5px;
+  font-size: 14px;
+}
+
+.property-price {
+  font-size: 18px;
+  font-weight: bold;
+  color: #333;
+}
+
+/* สำหรับการแบ่งประเภทการซื้อ/เช่า */
+.property-tag-buy {
+  background-color: rgba(74, 74, 74, 0.8);
+}
+
+.property-tag-rent {
+  background-color: rgba(74, 74, 74, 0.8);
+}
+
+/* ส่วนของข้อความการค้นหา */
+.search-info-message {
+  background-color: white;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 15px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  font-size: 14px;
+}
+
 /* Animation */
 @keyframes pulse {
     0% {
