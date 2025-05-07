@@ -54,29 +54,10 @@ const chatState = {
     }
 
     // เพิ่มฟังก์ชันตรวจสอบข้อความซ้ำ
-function isMessageDuplicate(messageId) {
-  // เพิ่มเช็คข้อความซ้ำตามเนื้อหาด้วย
-  const existingMsg = document.querySelector(`.message[data-message-id="${messageId}"]`);
-  if (existingMsg) {
-    console.log('Found duplicate message with id:', messageId);
-    return true;
-  }
-
-  // ตรวจสอบข้อความที่มีเวลาใกล้เคียงกัน (อาจเกิดจากความล่าช้าของเครือข่าย)
-  const messages = document.querySelectorAll('.message');
-  const currentTime = messageId;
-  const timeThreshold = 1000; // 1 วินาที
-
-  for (let i = 0; i < messages.length; i++) {
-    const msgId = parseInt(messages[i].getAttribute('data-message-id'));
-    if (Math.abs(currentTime - msgId) < timeThreshold) {
-      console.log('Found time-adjacent duplicate message:', msgId, 'vs', currentTime);
-      return true;
+    function isMessageDuplicate(messageId) {
+        return document.querySelector(`.message[data-message-id="${messageId}"]`) !== null;
     }
-  }
 
-  return false;
-}
     // เชื่อมต่อกับ Socket.IO
     function connectSocket() {
         // ตรวจสอบว่า Socket.IO ถูกโหลดแล้วหรือไม่
@@ -97,25 +78,16 @@ function isMessageDuplicate(messageId) {
             chatState.socket.on('connect', () => {
                 console.log('Connected to Socket.IO with ID:', chatState.socket.id);
 
-                    // เพิ่มการทดสอบการเชื่อมต่อ
-                    chatState.socket.on('test', (data) => {
-                      console.log('Socket test received:', data);
-                      chatState.socket.emit('test_response', { received: true, timestamp: Date.now() });
-                    });
+                // เข้าร่วมห้องแชทตาม sessionId
+                chatState.socket.emit('join', chatState.sessionId);
 
-                    // เข้าร่วมห้องแชทตาม sessionId
-                    chatState.socket.emit('join', chatState.sessionId);
-
-                    // อัปเดตสถานะการเชื่อมต่อ (ถ้ามี)
-                    if (elements.socketStatus) {
-                      elements.socketStatus.textContent = 'Connected';
-                      elements.socketStatus.classList.add('connected');
-                      elements.socketStatus.classList.remove('disconnected');
-                    }
+                // อัปเดตสถานะการเชื่อมต่อ (ถ้ามี)
+                if (elements.socketStatus) {
+                    elements.socketStatus.textContent = 'Connected';
+                    elements.socketStatus.classList.add('connected');
+                    elements.socketStatus.classList.remove('disconnected');
+                }
             });
-            chatState.socket.on('joined_room', (data) => {
-                console.log('Successfully joined room:', data.room);
-              });
 
              chatState.socket.on('admin_status_change', (data) => {
                     console.log('Admin status changed:', data);
@@ -134,60 +106,66 @@ function isMessageDuplicate(messageId) {
                     addMessage('system', message, '', Date.now());
                 });
             // เมื่อมีข้อความใหม่จากเซิร์ฟเวอร์
-                chatState.socket.on('new_message', (message) => {
-    console.log('ได้รับข้อความใหม่ผ่าน socket:', message);
+            chatState.socket.on('new_message', (message) => {
+                console.log('New message received via socket:', message);
 
-    // เพิ่มเงื่อนไขตรวจสอบข้อความให้ละเอียดขึ้น
-    if (!message || typeof message !== 'object') {
-        console.error('รูปแบบข้อความไม่ถูกต้อง:', message);
-        return;
-    }
-
-    // ตรวจสอบการทำงานของ isMessageDuplicate
-    if (message.timestamp && isMessageDuplicate(message.timestamp)) {
-        console.log('พบข้อความซ้ำ ไม่แสดงผล:', message.text);
-        return;
-    }
-
-    // แสดงข้อความตามประเภทผู้ส่ง
-    if (message.sender === 'admin') {
-        // ข้อความจากแอดมิน
-        addMessage('admin', message.text, message.adminName || 'Admin', message.timestamp);
-    } else if (message.sender === 'bot') {
-        // ตรวจสอบ payload และข้อความธรรมดา
-        if (message.payload) {
-            console.log('กำลังประมวลผล payload:', message.payload);
-            const richContentHtml = processRichContent(message.payload);
-
-            if (richContentHtml) {
-                const messageElement = document.createElement('div');
-                messageElement.className = 'message bot-message';
-                messageElement.setAttribute('data-message-id', message.timestamp);
-                messageElement.innerHTML = `
-                    <div class="message-avatar">
-                        <img src="assets/icons/chat-avatar.jpg" alt="Bot">
-                    </div>
-                    <div class="message-content">
-                        ${richContentHtml}
-                    </div>
-                `;
-
-                if (elements.chatMessages) {
-                    elements.chatMessages.appendChild(messageElement);
-                    addInteractiveListeners(messageElement);
-                    scrollToBottom();
-                } else {
-                    console.error('ไม่พบอิลิเมนต์ chatMessages');
+                // เช็คว่าเป็นข้อความที่แสดงไปแล้วหรือไม่
+                if (isMessageDuplicate(message.timestamp)) {
+                    console.log('Duplicate message from socket, ignoring:', message);
+                    return;
                 }
-            }
-        }
 
-        // ถ้ามีข้อความธรรมดา
-        if (message.text) {
-            addMessage('bot', message.text, '', message.timestamp);
-        }
-    }
-});
+                // แสดงเฉพาะข้อความจากแอดมินหรือบอท (ไม่ต้องแสดงข้อความของผู้ใช้เอง)
+                if (message.sender === 'admin') {
+                    // ข้อความจากแอดมิน
+                    const messageElement = document.createElement('div');
+                    messageElement.className = 'message bot-message';
+                    messageElement.setAttribute('data-message-id', message.timestamp);
+                    messageElement.innerHTML = `
+                        <div class="message-avatar">
+                            <img src="assets/icons/chat-avatar.jpg" alt="Admin">
+                        </div>
+                        <div class="message-content admin-message">
+                            <p>${escapeHTML(message.text)}</p>
+                            <small>${escapeHTML(message.adminName || 'Admin')}</small>
+                        </div>
+                    `;
+
+                    elements.chatMessages.appendChild(messageElement);
+                    scrollToBottom();
+                }
+                // ข้อความจากบอท
+                else if (message.sender === 'bot') {
+                    // จัดการกับ payload ถ้ามี
+                    if (message.payload) {
+                        const richContentHtml = processRichContent(message.payload);
+
+                        if (richContentHtml) {
+                            const messageElement = document.createElement('div');
+                            messageElement.className = 'message bot-message';
+                            messageElement.setAttribute('data-message-id', message.timestamp);
+                            messageElement.innerHTML = `
+                                <div class="message-avatar">
+                                    <img src="assets/icons/chat-avatar.jpg" alt="Bot">
+                                </div>
+                                <div class="message-content">
+                                    ${richContentHtml}
+                                </div>
+                            `;
+
+                            elements.chatMessages.appendChild(messageElement);
+                            addInteractiveListeners(messageElement);
+                            scrollToBottom();
+                        }
+                    }
+
+                    // ถ้ามีข้อความธรรมดา
+//                    if (message.text) {
+//                        addMessage('bot', message.text, '', message.timestamp);
+//                    }
+                }
+            });
+
             // เมื่อมีการอัปเดตสถานะการสนทนา
             chatState.socket.on('status_update', (data) => {
                 console.log('Conversation status updated:', data);
@@ -307,37 +285,37 @@ function addSystemMessage(text) {
 }
 
     // ส่งข้อความ
-    function sendMessage() {
-      const message = elements.chatInput.value.trim();
-      if (!message) return;
+   function sendMessage() {
+       const message = elements.chatInput.value.trim();
+       if (!message) return;
 
-      const messageId = Date.now();
+       const messageId = Date.now();
 
-      // แสดงข้อความผู้ใช้ในหน้าต่างแชทของผู้ใช้เอง (ไม่ส่งกลับมาจาก Socket)
-      addMessage('user', message, '', messageId);
-      chatState.lastMessageSender = 'user';
+       // แสดงข้อความผู้ใช้
+       addMessage('user', message, '', messageId);
+       chatState.lastMessageSender = 'user';
 
-      // เคลียร์ช่องข้อความ
-      elements.chatInput.value = '';
+       // เคลียร์ช่องข้อความ
+       elements.chatInput.value = '';
 
-      // ส่งข้อความผ่าน Socket.IO (จะถูกส่งต่อไปให้แอดมินหรือบอท)
-      if (chatState.socket && chatState.socket.connected) {
-        chatState.socket.emit('new_message', {
-          sender: 'user',
-          text: message,
-          timestamp: messageId,
-          room: chatState.sessionId
-        });
-      }
+       // ถ้าแอดมินกำลังแอคทีฟ ให้ส่งข้อความผ่าน Socket.IO แต่ไม่ต้องส่งไป Dialogflow
+       if (chatState.adminActive) {
+           if (chatState.socket && chatState.socket.connected) {
+               chatState.socket.emit('new_message', {
+                   sender: 'user',
+                   text: message,
+                   timestamp: messageId,
+                   room: chatState.sessionId
+               });
+           }
+       } else {
+           // ส่งข้อความไปยัง Dialogflow ถ้าแอดมินไม่ได้แอคทีฟ
+           sendToDialogflow(message, chatState.sessionId, messageId)
+               .then(handleDialogflowResponse)
+               .catch(handleDialogflowError);
+       }
+   }
 
-      // ถ้าแอดมินกำลังแอคทีฟ ไม่ต้องส่งไป Dialogflow
-      if (!chatState.adminActive) {
-        // ส่งข้อความไปยัง Dialogflow
-        sendToDialogflow(message, chatState.sessionId, messageId)
-          .then(handleDialogflowResponse)
-          .catch(handleDialogflowError);
-      }
-    }
     // จัดการข้อผิดพลาดจาก Dialogflow
     function handleDialogflowError(error) {
         console.error('เกิดข้อผิดพลาดในการเชื่อมต่อ:', error);
@@ -346,19 +324,17 @@ function addSystemMessage(text) {
 
     // เพิ่มข้อความลงในช่องแชท
     function addMessage(sender, text, senderName = '', messageId = null) {
-         if (!elements.chatMessages) return;
+        const timestamp = messageId || Date.now();
 
-          const timestamp = messageId || Date.now();
-
-          // ตรวจสอบว่ามีข้อความนี้อยู่แล้วหรือไม่
-          if (isMessageDuplicate(timestamp)) {
+        // ตรวจสอบว่ามีข้อความนี้อยู่แล้วหรือไม่
+        if (isMessageDuplicate(timestamp)) {
             console.log('Duplicate message, not adding:', text);
             return;
-          }
+        }
 
-          const messageElement = document.createElement('div');
-          messageElement.className = `message ${sender}-message`;
-          messageElement.setAttribute('data-message-id', timestamp);
+        const messageElement = document.createElement('div');
+        messageElement.className = `message ${sender}-message`;
+        messageElement.setAttribute('data-message-id', timestamp);
         messageElement.innerHTML = `
             <div class="message-avatar">
                 ${sender === 'user'
@@ -400,59 +376,54 @@ function addSystemMessage(text) {
      * จัดการการตอบกลับจาก Dialogflow และแสดงผล
      * @param {Object} response - ข้อมูลการตอบกลับจาก Dialogflow
      */
-function handleDialogflowResponse(response) {
-  console.log('Handling Dialogflow response:', response);
+    function handleDialogflowResponse(response) {
+        console.log('Handling Dialogflow response:', response);
 
-  // เพิ่มการตรวจสอบว่าแอดมินแอคทีฟหรือไม่
-  if (chatState.adminActive) {
-    console.log('Admin is active, but still showing bot response');
-    // ไม่ return ออกไปเพื่อให้แสดงข้อความบอท แม้ว่าแอดมินจะแอคทีฟ
-  }
-if (response && response.message) {
-        console.log('Adding bot message from Dialogflow:', response.message);
-        const botMessageId = response.messageId || Date.now();
-        addMessage('bot', response.message, '', botMessageId);
-    } else {
-        console.error('Dialogflow response missing message property:', response);
+        // แสดงข้อความตอบกลับ
+        if (response.message) {
+            // ใช้ messageId จากฝั่ง server ถ้ามี
+            const botMessageId = response.messageId || Date.now();
+            addMessage('bot', response.message, '', botMessageId);
+        }
+
+        // จัดการ Rich Content
+        if (response.payload) {
+            console.log('Processing payload:', response.payload);
+            const richContentHtml = processRichContent(response.payload);
+
+            if (richContentHtml) {
+                console.log('Rich content HTML generated:', richContentHtml);
+                const payloadMessageId = (response.messageId ? response.messageId + 1 : Date.now()) + 1;
+
+                // ตรวจสอบว่ามีข้อความนี้อยู่แล้วหรือไม่
+                if (isMessageDuplicate(payloadMessageId)) {
+                    console.log('Duplicate rich content, not adding');
+                    return;
+                }
+
+                const messageElement = document.createElement('div');
+                messageElement.className = 'message bot-message';
+                messageElement.setAttribute('data-message-id', payloadMessageId);
+                messageElement.innerHTML = `
+                    <div class="message-avatar">
+                        <img src="assets/icons/chat-avatar.jpg" alt="Bot">
+                    </div>
+                    <div class="message-content">
+                        ${richContentHtml}
+                    </div>
+                `;
+
+                // เพิ่มลงใน DOM
+                elements.chatMessages.appendChild(messageElement);
+
+                // เพิ่ม Event Listeners สำหรับองค์ประกอบแบบโต้ตอบ
+                addInteractiveListeners(messageElement);
+
+                scrollToBottom();
+            }
+        }
     }
 
-  // จัดการ Rich Content
-  if (response.payload) {
-    console.log('Processing payload:', response.payload);
-    const richContentHtml = processRichContent(response.payload);
-
-    if (richContentHtml) {
-      console.log('Rich content HTML generated:', richContentHtml);
-      const payloadMessageId = (response.messageId ? response.messageId + 1 : Date.now()) + 1;
-
-      // ตรวจสอบว่ามีข้อความนี้อยู่แล้วหรือไม่
-      if (isMessageDuplicate(payloadMessageId)) {
-        console.log('Duplicate rich content, not adding');
-        return;
-      }
-
-      const messageElement = document.createElement('div');
-      messageElement.className = 'message bot-message';
-      messageElement.setAttribute('data-message-id', payloadMessageId);
-      messageElement.innerHTML = `
-          <div class="message-avatar">
-              <img src="assets/icons/chat-avatar.jpg" alt="Bot">
-          </div>
-          <div class="message-content">
-              ${richContentHtml}
-          </div>
-      `;
-
-      // เพิ่มลงใน DOM
-      elements.chatMessages.appendChild(messageElement);
-
-      // เพิ่ม Event Listeners สำหรับองค์ประกอบแบบโต้ตอบ
-      addInteractiveListeners(messageElement);
-
-      scrollToBottom();
-    }
-  }
-}
     // ฟังก์ชันย่อยสำหรับการแสดงผล Rich Content
     function renderInfoCard(item) {
         return `
@@ -543,91 +514,103 @@ if (response && response.message) {
         `;
     }
 
-function renderPropertyList(properties) {
-  return `
-    <div class="property-list">
-      ${properties.map(property => {
-        // กำหนดประเภทการ์ด (ซื้อ/เช่า)
-        const tagType = property.tag || 'ขาย';
-        const isRent = tagType.includes('เช่า');
-        const tagClass = isRent ? 'property-tag-rent' : 'property-tag-buy';
-        const tagIcon = isRent ? 'home' : 'tag';
-
-        // สร้างข้อความสำหรับส่งเมื่อคลิก
-        const clickText = `ขอดูรายละเอียดของอสังหาริมทรัพย์ ${property.id}`;
-
+    function renderPropertyList(properties) {
         return `
-          <div class="property-card" data-property-id="${property.id}" data-text="${escapeHTML(clickText)}">
-            <div class="property-image">
-              <img src="${property.photo}" alt="${property.title}">
-              <div class="property-type-badge ${tagClass}">
-                <i class="fas fa-${tagIcon}"></i> ${tagType}
-              </div>
+            <div class="property-list">
+                ${properties.map(property => {
+            // จัดการวันที่ (ถ้ามี)
+            const dateDisplay = property.date ? property.date : '';
+            // จัดการจำนวนการดู (ถ้ามี)
+            const viewsDisplay = property.views ? property.views : '';
+            // สร้างข้อความสำหรับส่งเมื่อคลิก
+            const clickText = `ขอดูรายละเอียดของอสังหาริมทรัพย์ ${property.id}`;
+
+            return `
+                    <div class="property-card" data-property-id="${property.id}" data-text="${escapeHTML(clickText)}">
+                        <div class="property-image">
+                            <img src="${property.imageUrl}" alt="${property.title}">
+                            <div class="property-badge">ขาย</div>
+                            ${(dateDisplay || viewsDisplay) ? `
+                            <div class="property-date-views">
+                                ${dateDisplay ? `<div class="property-date">${dateDisplay}</div>` : ''}
+                                ${viewsDisplay ? `
+                                <div class="property-views">
+                                    <i class="fa-solid fa-eye"></i> ${viewsDisplay}
+                                </div>
+                                ` : ''}
+                            </div>
+                            ` : ''}
+                        </div>
+                        <div class="property-info">
+                            <div class="property-price">฿${property.price.toLocaleString()}</div>
+                            <div class="property-title">${property.title}</div>
+                            <div class="property-location">
+                                <i class="fa-solid fa-location-dot"></i> ${property.location}
+                            </div>
+                            <div class="property-amenities">
+                                <div class="amenity-item">
+                                    <i class="fa-solid fa-chart-area"></i>
+                                    <span>${property.area} ตร.ว.</span>
+                                </div>
+                                <div class="amenity-item">
+                                    <i class="fa-solid fa-layer-group"></i>
+                                    <span>ชั้น ${property.floors}</span>
+                                </div>
+                                <div class="amenity-item">
+                                    <i class="fa-solid fa-bed"></i>
+                                    <span>${property.bedrooms} ห้องนอน</span>
+                                </div>
+                                <div class="amenity-item">
+                                    <i class="fa-solid fa-bath"></i>
+                                    <span>${property.bathrooms} ห้องน้ำ</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    `;
+        }).join('')}
             </div>
-            <div class="property-details">
-              <div class="property-title">${tagType} ${property.title}</div>
-              <div class="property-location">
-                <i class="fas fa-map-marker-alt"></i> ${property.location || property.zone || 'ไม่ระบุที่ตั้ง'}
-              </div>
-              <div class="property-price">฿${typeof property.price === 'number' ? property.price.toLocaleString() : property.price}</div>
-            </div>
-          </div>
         `;
-      }).join('')}
-    </div>
-  `;
-}
-
-
-// ตรวจสอบฟังก์ชัน processRichContent ใน chat.js
-     function processRichContent(payload) {
-    console.log('กำลังประมวลผล richContent:', payload);
-
-    if (!payload.richContent || !Array.isArray(payload.richContent) || payload.richContent.length === 0) {
-        console.error('ไม่พบข้อมูล richContent หรือข้อมูลไม่ถูกต้อง:', payload);
-        return '';
     }
 
-    const richContent = payload.richContent[0];
-    if (!Array.isArray(richContent)) {
-        console.error('richContent ไม่อยู่ในรูปแบบอาร์เรย์:', richContent);
-        return '';
+    /**
+     * ประมวลผล Rich Content จาก Dialogflow
+     * @param {Object} payload - Payload จาก Dialogflow
+     * @returns {string} - HTML สำหรับแสดง Rich Content
+     */
+    function processRichContent(payload) {
+        if (!payload.richContent || payload.richContent.length === 0) return '';
+
+        const richContent = payload.richContent[0];
+        let richContentHTML = '';
+
+        // ประมวลผลแต่ละประเภทของ Rich Content
+        richContent.forEach(item => {
+            switch (item.type) {
+                case 'property_list':
+                    richContentHTML += renderPropertyList(item.properties);
+                    break;
+                case 'info':
+                    richContentHTML += renderInfoCard(item);
+                    break;
+                case 'chips':
+                    richContentHTML += renderChips(item);
+                    break;
+                case 'image':
+                    richContentHTML += renderImage(item);
+                    break;
+                case 'button':
+                    richContentHTML += renderButton(item);
+                    break;
+                case 'list':
+                    richContentHTML += renderList(item);
+                    break;
+            }
+        });
+
+        return richContentHTML;
     }
 
-    console.log('จำนวนองค์ประกอบใน richContent:', richContent.length);
-
-    let richContentHTML = '';
-
-    // ประมวลผลแต่ละประเภทของ Rich Content
-    richContent.forEach((item, index) => {
-        console.log(`กำลังประมวลผลองค์ประกอบที่ ${index}, ประเภท:`, item.type);
-
-        switch (item.type) {
-            case 'property_list':
-                richContentHTML += renderPropertyList(item.properties);
-                break;
-            case 'info':
-                richContentHTML += renderInfoCard(item);
-                break;
-            case 'chips':
-                richContentHTML += renderChips(item);
-                break;
-            case 'image':
-                richContentHTML += renderImage(item);
-                break;
-            case 'button':
-                richContentHTML += renderButton(item);
-                break;
-            case 'list':
-                richContentHTML += renderList(item);
-                break;
-            default:
-                console.warn(`ไม่รองรับประเภทข้อมูล: ${item.type}`);
-        }
-    });
-
-    return richContentHTML;
-}
     // เพิ่ม Event Listeners สำหรับองค์ประกอบแบบโต้ตอบ
     function addInteractiveListeners(richContentElement) {
         console.log('Setting up interactive elements');
@@ -749,5 +732,4 @@ function renderPropertyList(properties) {
     // เรียกใช้การเริ่มต้นเมื่อโหลดหน้าเว็บ
     document.addEventListener('DOMContentLoaded', addAdminStatusStyles);
     document.addEventListener('DOMContentLoaded', init);
-
 })();

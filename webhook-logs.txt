@@ -40,3 +40,44 @@ Data: {
   "session": "projects/living-ai-chat-bfcg/agent/sessions/feac3ddd-9a8e-4d7c-9a41-72511f49735f"
 }
 
+Webhook called at 2025-05-07T04:51:49.639Z
+Data: {
+  "responseId": "2d8d41a9-6862-40c7-a553-9c9b9355a9f8-c8b17b8d",
+  "queryResult": {
+    "queryText": "สวัสดี",
+    "action": "input.welcome",
+    "parameters": {},
+    "allRequiredParamsPresent": true,
+    "fulfillmentText": "สบายดีไหมคะ",
+    "fulfillmentMessages": [
+      {
+        "text": {
+          "text": [
+            "สบายดีไหมคะ"
+          ]
+        }
+      }
+    ],
+    "outputContexts": [
+      {
+        "name": "projects/living-ai-chat-bfcg/agent/sessions/258567cb-9ca2-4c26-bd06-c39bec438b81/contexts/__system_counters__",
+        "lifespanCount": 1,
+        "parameters": {
+          "no-input": 0,
+          "no-match": 0
+        }
+      }
+    ],
+    "intent": {
+      "name": "projects/living-ai-chat-bfcg/agent/intents/522cd03b-075f-4e46-9ab6-7256fc5c5d14",
+      "displayName": "Default Welcome Intent"
+    },
+    "intentDetectionConfidence": 1,
+    "languageCode": "th"
+  },
+  "originalDetectIntentRequest": {
+    "payload": {}
+  },
+  "session": "projects/living-ai-chat-bfcg/agent/sessions/258567cb-9ca2-4c26-bd06-c39bec438b81"
+}
+
