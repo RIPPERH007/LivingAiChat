@@ -1,0 +1,42 @@
+Webhook called at 2025-05-07T03:49:29.928Z
+Data: {
+  "responseId": "64462d5b-9a4f-451c-8469-75089e8adec1-c8b17b8d",
+  "queryResult": {
+    "queryText": "หาที่อยู่ให้เช่าฟรี",
+    "parameters": {
+      "transaction_type": ""
+    },
+    "allRequiredParamsPresent": true,
+    "fulfillmentMessages": [
+      {
+        "text": {
+          "text": [
+            ""
+          ]
+        }
+      }
+    ],
+    "outputContexts": [
+      {
+        "name": "projects/living-ai-chat-bfcg/agent/sessions/feac3ddd-9a8e-4d7c-9a41-72511f49735f/contexts/__system_counters__",
+        "parameters": {
+          "no-input": 0,
+          "no-match": 0,
+          "transaction_type": "",
+          "transaction_type.original": ""
+        }
+      }
+    ],
+    "intent": {
+      "name": "projects/living-ai-chat-bfcg/agent/intents/56aba86a-a7cb-4379-8cd7-fbc6e6ab6e38",
+      "displayName": "step4"
+    },
+    "intentDetectionConfidence": 0.4135085,
+    "languageCode": "th"
+  },
+  "originalDetectIntentRequest": {
+    "payload": {}
+  },
+  "session": "projects/living-ai-chat-bfcg/agent/sessions/feac3ddd-9a8e-4d7c-9a41-72511f49735f"
+}
+

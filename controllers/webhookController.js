@@ -2,6 +2,7 @@
  * Webhook Controller
  * จัดการ webhook จาก Dialogflow และสร้างการตอบกลับแบบมีโครงสร้าง
  */
+const fs = require('fs');
 
 // เอ็กซ์ปอร์ตฟังก์ชันสำหรับใช้ใน server.js
 exports.createWelcome = createWelcome;
@@ -20,6 +21,13 @@ exports.handleWebhook = (req, res) => {
             message: 'Invalid webhook request'
         });
     }
+      console.log('Webhook called with data:', JSON.stringify(req.body, null, 2));
+
+        // บันทึกการเรียก webhook ลงไฟล์
+        fs.appendFileSync('webhook-logs.txt',
+                         `Webhook called at ${new Date().toISOString()}\n` +
+                         `Data: ${JSON.stringify(req.body, null, 2)}\n\n`);
+
 
     // รับข้อมูลจาก request
     const queryResult = req.body.queryResult;
@@ -161,6 +169,8 @@ function createWelcome() {
  * @returns {Object} การตอบกลับสำหรับขั้นตอนที่ 1
  */
 function createStep1(parameters = {}) {
+    console.log('กำลังสร้างการตอบกลับสำหรับ step1 พร้อมพารามิเตอร์:', parameters);
+
     const transactionType = parameters.transaction_type || '';
     let responseText = '';
 
@@ -176,7 +186,11 @@ function createStep1(parameters = {}) {
         responseText = 'กรุณาเลือกประเภทธุรกรรมที่คุณต้องการ';
     }
 
-    return {
+    // เพิ่มการล็อก
+    console.log('สร้างการตอบกลับสำหรับ step1:', responseText);
+
+    // ตรวจสอบว่าข้อมูล payload มีการสร้างอย่างถูกต้อง
+    const response = {
         fulfillmentMessages: [
             {
                 text: {
@@ -213,8 +227,11 @@ function createStep1(parameters = {}) {
             }
         ]
     };
-}
 
+    console.log('ข้อมูลการตอบกลับที่สร้าง:', JSON.stringify(response));
+
+    return response;
+}
 /**
  * สร้างการตอบกลับสำหรับขั้นตอนที่ 2
  * เลือกประเภทอสังหาริมทรัพย์

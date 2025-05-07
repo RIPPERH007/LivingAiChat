@@ -298,13 +298,25 @@ app.post('/api/dialogflow', async (req, res) => {
     };
 
     // สร้างข้อมูลข้อความของบอท
-    const botMessage = {
-      sender: 'bot',
-      text: result.fulfillmentText || 'ไม่เข้าใจคำถาม กรุณาลองใหม่อีกครั้ง',
-      intent: detectedIntent,
-      timestamp: Date.now(),
-      room: currentSessionId
-    };
+   let botMessageText = 'ไม่เข้าใจคำถาม กรุณาลองใหม่อีกครั้ง';
+
+   // ใช้ข้อความจาก fulfillmentMessages ซึ่งมาจาก webhook
+   if (result.fulfillmentMessages && result.fulfillmentMessages.length > 0) {
+     for (const message of result.fulfillmentMessages) {
+       if (message.text && message.text.text && message.text.text.length > 0) {
+         botMessageText = message.text.text[0];
+           break;
+       }
+     }
+   }
+
+   const botMessage = {
+     sender: 'bot',
+     text: botMessageText,
+     intent: detectedIntent,
+     timestamp: Date.now(),
+     room: currentSessionId
+   };
 
     // บันทึกข้อความ
     conversations[currentSessionId].messages.push(userMessage);
@@ -398,13 +410,28 @@ app.post('/api/dialogflow', async (req, res) => {
     // สร้าง response กลับไปยัง Live Chat
     const responseData = {
       success: true,
-      message: result.fulfillmentText || 'ไม่เข้าใจคำถาม กรุณาลองใหม่อีกครั้ง',
+      message: result.fulfillmentText || 'ขออภัย ไม่เข้าใจคำถามของคุณ กรุณาลองใหม่อีกครั้ง', // แก้ไขข้อความนี้
       intent: detectedIntent,
       confidence: result.intentDetectionConfidence,
       sessionId: currentSessionId,
       sessionData: sessionData[currentSessionId]
     };
+console.log('Dialogflow response raw:');
+console.log(responses[0]);
 
+console.log('Dialogflow queryResult:');
+console.log(result);
+
+console.log('Dialogflow fulfillmentMessages:');
+if (result.fulfillmentMessages) {
+    result.fulfillmentMessages.forEach((msg, idx) => {
+        console.log(`Message ${idx}:`, JSON.stringify(msg, null, 2));
+    });
+} else {
+    console.log('No fulfillmentMessages found');
+}
+
+console.log('Using route to webhook?', result.webhookUsed);
     // ตรวจสอบ custom payload
     if (result.fulfillmentMessages && result.fulfillmentMessages.length > 0) {
       for (const message of result.fulfillmentMessages) {
@@ -413,11 +440,15 @@ app.post('/api/dialogflow', async (req, res) => {
           responseData.payload = payload;
 
           // ส่ง payload ผ่าน Socket.IO
-          const payloadMessage = {
-            ...botMessage,
-            payload: payload
-          };
 
+            const payloadMessage = {
+              sender: 'bot',
+              text: botMessageText, // ใช้ข้อความที่เราดึงมาจาก fulfillmentMessages
+              intent: detectedIntent,
+              timestamp: Date.now(),
+              room: currentSessionId,
+              payload: payload
+            };
           console.log('Sending bot message with payload via Socket.IO:', payloadMessage);
 
           // ใช้ io.to() เพื่อส่งไปยังทุกคนในห้อง
