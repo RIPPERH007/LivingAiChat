@@ -157,12 +157,12 @@ const chatState = {
                             addInteractiveListeners(messageElement);
                             scrollToBottom();
                         }
-                    }
+                    }else
 
                     // ถ้ามีข้อความธรรมดา
-//                    if (message.text) {
-//                        addMessage('bot', message.text, '', message.timestamp);
-//                    }
+                    if (message.text) {
+                        addMessage('bot', message.text, '', message.timestamp);
+                    }
                 }
             });
 
@@ -379,12 +379,12 @@ function addSystemMessage(text) {
     function handleDialogflowResponse(response) {
         console.log('Handling Dialogflow response:', response);
 
-        // แสดงข้อความตอบกลับ
-        if (response.message) {
-            // ใช้ messageId จากฝั่ง server ถ้ามี
-            const botMessageId = response.messageId || Date.now();
-            addMessage('bot', response.message, '', botMessageId);
-        }
+//        // แสดงข้อความตอบกลับ
+//        if (response.message) {
+//            // ใช้ messageId จากฝั่ง server ถ้ามี
+//            const botMessageId = response.messageId || Date.now();
+//            addMessage('bot', response.message, '', botMessageId);
+//        }
 
         // จัดการ Rich Content
         if (response.payload) {

@@ -294,44 +294,31 @@ app.post('/api/dialogflow', async (req, res) => {
    };
 
    // กำหนดค่าเริ่มต้นสำหรับข้อความบอท
-   let botMessageText = 'ไม่เข้าใจคำถาม กรุณาลองใหม่อีกครั้ง';
+   let botMessageText = 'ไม่เข้าใจคำถาม กรุณาลองใหม่อีกครั้ง'; // ค่าเริ่มต้น
 
-   // ดึงข้อมูลทั้งหมดจาก Dialogflow เพื่อดีบั๊ก
-   console.log('Dialogflow complete response data:');
-   console.log('Intent:', detectedIntent);
-   console.log('Webhook Used:', result.webhookUsed);
-   console.log('FulfillmentText:', result.fulfillmentText);
-   if (result.fulfillmentMessages) {
-     console.log('FulfillmentMessages:', JSON.stringify(result.fulfillmentMessages, null, 2));
-   }
-
-   // ปรับลำดับความสำคัญของการเลือกข้อความ:
-   // 1. ใช้ข้อความจาก webhook เสมอถ้ามีและไม่ใช่ข้อความว่าง
+   // ปรับลำดับความสำคัญในการเลือกข้อความ
+   // 1. ใช้ข้อความจาก webhook ถ้ามี
    if (result.webhookUsed && result.fulfillmentMessages && result.fulfillmentMessages.length > 0) {
-     // ดึงข้อความจาก webhook (fulfillmentMessages[0])
-     const webhookMessage = result.fulfillmentMessages[0];
+     // ดึงข้อความจาก webhook
+     const webhookMessage = result.fulfillmentMessages.find(msg => msg.text && msg.text.text && msg.text.text.length > 0);
 
-     if (webhookMessage.text && webhookMessage.text.text &&
-         webhookMessage.text.text.length > 0 && webhookMessage.text.text[0].trim() !== '') {
-
+     if (webhookMessage) {
        botMessageText = webhookMessage.text.text[0];
        console.log('Using text from webhook message:', botMessageText);
      }
-     else {
-       // ถ้าไม่มีข้อความจาก webhook หรือเป็นข้อความว่าง ให้ใช้ fulfillmentText
-       if (result.fulfillmentText && result.fulfillmentText.trim() !== '') {
-         botMessageText = result.fulfillmentText;
-         console.log('Using fulfillmentText because webhook message is empty:', botMessageText);
-       }
+     // ถ้าไม่มีข้อความจาก webhook ให้ใช้ fulfillmentText
+     else if (result.fulfillmentText && result.fulfillmentText.trim() !== '') {
+       botMessageText = result.fulfillmentText;
+       console.log('Using fulfillmentText because webhook message is empty:', botMessageText);
      }
    }
-   // 2. ถ้าไม่ใช้ webhook ให้ใช้ fulfillmentText จาก Dialogflow โดยตรง
+   // 2. ถ้าไม่ใช้ webhook ให้ใช้ fulfillmentText โดยตรง
    else if (result.fulfillmentText && result.fulfillmentText.trim() !== '') {
      botMessageText = result.fulfillmentText;
      console.log('Using fulfillmentText (no webhook):', botMessageText);
    }
 
-   // สร้างข้อความบอท
+   // สร้างข้อความบอทเพียงครั้งเดียว
    const botMessage = {
      sender: 'bot',
      text: botMessageText,
@@ -339,6 +326,7 @@ app.post('/api/dialogflow', async (req, res) => {
      timestamp: Date.now(),
      room: currentSessionId
    };
+
 
     // บันทึกข้อความ
     conversations[currentSessionId].messages.push(userMessage);
@@ -439,32 +427,27 @@ app.post('/api/dialogflow', async (req, res) => {
     };
 
     // ตรวจสอบ custom payload
-    if (result.fulfillmentMessages && result.fulfillmentMessages.length > 0) {
-      for (const message of result.fulfillmentMessages) {
-        if (message.payload) {
-          const payload = struct.decode(message.payload);
-          responseData.payload = payload;
+let payloadSent = false;
+if (result.fulfillmentMessages && result.fulfillmentMessages.length > 0) {
+  for (const message of result.fulfillmentMessages) {
+    if (message.payload && !payloadSent) {
+      const payload = struct.decode(message.payload);
 
-          // ส่ง payload ผ่าน Socket.IO
+      // ส่ง payload เพียงครั้งเดียว
+      const payloadMessage = {
+        sender: 'bot',
+        intent: detectedIntent,
+        timestamp: Date.now() + 1, // +1 เพื่อให้ timestamp ไม่ซ้ำกับข้อความข้างต้น
+        room: currentSessionId,
+        payload: payload
+      };
 
-            const payloadMessage = {
-              sender: 'bot',
-              text: botMessageText, // ใช้ข้อความที่เราดึงมาจาก fulfillmentMessages
-              intent: detectedIntent,
-              timestamp: Date.now(),
-              room: currentSessionId,
-              payload: payload
-            };
-          console.log('Sending bot message with payload via Socket.IO:', payloadMessage);
-
-          // ใช้ io.to() เพื่อส่งไปยังทุกคนในห้อง
-          io.to(currentSessionId).emit('new_message', payloadMessage);
-
-          break;
-        }
-      }
+      console.log('Sending bot message with payload via Socket.IO');
+      io.to(currentSessionId).emit('new_message', payloadMessage);
+      payloadSent = true;
     }
-
+  }
+}
     res.json(responseData);
   } catch (error) {
     console.error('Error:', error);

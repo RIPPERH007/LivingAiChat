@@ -63,7 +63,7 @@ body {
     bottom: 20px;
     right: 20px;
     width: 320px;
-    height: 480px;
+    height: 800px;
     background-color: #e9e8e4;
     border-radius: 12px;
     box-shadow: 0 5px 15px var(--chat-shadow);
