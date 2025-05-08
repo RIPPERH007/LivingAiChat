@@ -219,10 +219,10 @@
   }
 
   // Search Properties
-  function searchProperties() {
+function searchProperties() {
     if (!state.currentSessionId) {
-      showNotification('ไม่พบข้อมูล session กรุณาลองใหม่อีกครั้ง');
-      return;
+        showNotification('ไม่พบข้อมูล session กรุณาลองใหม่อีกครั้ง');
+        return;
     }
 
     // ดึงข้อมูลจากฟอร์ม
@@ -230,8 +230,8 @@
 
     // อัปเดตข้อมูลในสถานะ
     state.searchData = {
-      ...state.searchData,
-      ...formData
+        ...state.searchData,
+        ...formData
     };
 
     // ตรวจสอบว่าข้อมูลครบทั้ง 6 steps หรือไม่
@@ -239,39 +239,49 @@
 
     // แสดงสถานะกำลังโหลด
     if (elements.propertyCardsContainer) {
-      elements.propertyCardsContainer.innerHTML = '<div class="loading">กำลังค้นหา...</div>';
+        elements.propertyCardsContainer.innerHTML = '<div class="loading">กำลังค้นหา...</div>';
     }
 
-    // ส่งข้อมูลไปค้นหาที่เซิร์ฟเวอร์
-    if (window.adminAPI && window.adminAPI.searchProperties) {
-      window.adminAPI.searchProperties(state.searchData)
-        .then(response => {
-          console.log('Search results:', response);
-
-          if (response && response.success && response.data) {
-            // บันทึกผลลัพธ์การค้นหา
-            state.searchResults = response.data;
-
-            // แสดงผลลัพธ์การค้นหา
-            renderSearchResults(response.data);
-          } else {
-            if (elements.propertyCardsContainer) {
-              elements.propertyCardsContainer.innerHTML = '<div class="no-results">ไม่พบข้อมูลอสังหาริมทรัพย์</div>';
-            }
-          }
-        })
-        .catch(error => {
-          console.error('Error searching properties:', error);
-          if (elements.propertyCardsContainer) {
-            elements.propertyCardsContainer.innerHTML = '<div class="error">เกิดข้อผิดพลาดในการค้นหา</div>';
-          }
+    // ใช้ Socket.IO ในการค้นหาแทนที่จะเรียก API โดยตรง
+    if (window.socket && window.socket.connected) {
+        window.socket.emit('request_property_search', {
+            sessionId: state.currentSessionId,
+            searchData: state.searchData,
+            timestamp: Date.now()
         });
-    } else {
-      console.error('adminAPI.searchProperties not found!');
-      showNotification('ไม่พบฟังก์ชันค้นหาอสังหาริมทรัพย์', 'error');
-    }
-  }
 
+        showNotification('กำลังค้นหาอสังหาริมทรัพย์...');
+    } else {
+        // ถ้าไม่มีการเชื่อมต่อ Socket.IO ให้เรียกใช้ API แบบเดิม
+        if (window.adminAPI && window.adminAPI.searchProperties) {
+            window.adminAPI.searchProperties(state.searchData)
+                .then(response => {
+                    console.log('Search results:', response);
+
+                    if (response && response.success && response.data) {
+                        // บันทึกผลลัพธ์การค้นหา
+                        state.searchResults = response.data;
+
+                        // แสดงผลลัพธ์การค้นหา
+                        renderSearchResults(response.data);
+                    } else {
+                        if (elements.propertyCardsContainer) {
+                            elements.propertyCardsContainer.innerHTML = '<div class="no-results">ไม่พบข้อมูลอสังหาริมทรัพย์</div>';
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error searching properties:', error);
+                    if (elements.propertyCardsContainer) {
+                        elements.propertyCardsContainer.innerHTML = '<div class="error">เกิดข้อผิดพลาดในการค้นหา</div>';
+                    }
+                });
+        } else {
+            console.error('No search method available');
+            showNotification('ไม่พบฟังก์ชันค้นหาอสังหาริมทรัพย์', 'error');
+        }
+    }
+}
   // Render Search Results
 // ปรับแต่งฟังก์ชัน renderSearchResults ให้แสดงผลตามรูปที่ต้องการ
 function renderSearchResults(data) {
@@ -396,11 +406,42 @@ function renderSearchResults(data) {
 
   // Export functions
   window.propertySearchModule = {
-    init: init,
-    loadSearchData: loadSearchData,
-    showPropertySearchPanel: showPropertySearchPanel,
-    hidePropertySearchPanel: hidePropertySearchPanel,
-    handleSocketEvents: handleSocketEvents
+        init: init,
+        loadSearchData: loadSearchData,
+        showPropertySearchPanel: showPropertySearchPanel,
+        hidePropertySearchPanel: hidePropertySearchPanel,
+        handleSocketEvents: handleSocketEvents,
+         setSocket: function(socket) {
+             if (socket) {
+                 window.socket = socket;
+                 this.handleSocketEvents(socket);
+             }
+         },
+         processSearchResults: function(data) {
+               console.log('Processing search results:', data);
+
+               // บันทึกผลลัพธ์การค้นหา
+               state.searchResults = data;
+
+               // แสดงผลลัพธ์การค้นหา
+               this.renderSearchResults(data);
+
+               // แสดงการแจ้งเตือน
+               this.showNotification('ได้รับผลลัพธ์การค้นหา');
+           },
+
+           // แสดงข้อความไม่พบข้อมูล
+           showNoResults: function() {
+               console.log('No results found');
+
+               if (elements.propertyCardsContainer) {
+                   elements.propertyCardsContainer.innerHTML = '<div class="no-results">ไม่พบข้อมูลอสังหาริมทรัพย์ที่ตรงกับเงื่อนไขการค้นหา</div>';
+               }
+
+               // แสดงการแจ้งเตือน
+               this.showNotification('ไม่พบข้อมูลที่ตรงกับเงื่อนไขการค้นหา');
+           },
+
   };
 
   console.log('Property search module loaded successfully!');

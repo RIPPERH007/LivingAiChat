@@ -236,214 +236,87 @@
     }
 
     // เชื่อมต่อกับ Socket.IO
-    function connectSocket() {
-        // ตรวจสอบว่า Socket.IO ถูกโหลดแล้วหรือไม่
-        if (typeof io === 'undefined') {
-            console.error('Socket.IO library not loaded! Make sure to include the Socket.IO client script.');
-            return false;
+function connectSocket() {
+    // ตรวจสอบว่า Socket.IO ถูกโหลดแล้วหรือไม่
+    if (typeof io === 'undefined') {
+        console.error('Socket.IO library not loaded! Make sure to include the Socket.IO client script.');
+        return false;
+    }
+
+    try {
+        // เชื่อมต่อ Socket.IO
+        const socketUrl = window.location.hostname === 'localhost' ?
+                          'http://localhost:3000' :
+                          window.location.origin;
+
+        // ตรวจสอบว่ามีการเชื่อมต่ออยู่แล้วหรือไม่
+        if (state.socket && state.socket.connected) {
+            console.log('Socket is already connected:', state.socket.id);
+            return true;
         }
 
-        try {
-            // เชื่อมต่อ Socket.IO
-            const socketUrl = window.location.hostname === 'localhost' ?
-                              'http://localhost:3000' :
-                              window.location.origin;
+        // สร้างการเชื่อมต่อใหม่
+        state.socket = io(socketUrl, {
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000,
+            timeout: 10000
+        });
 
-            state.socket = io(socketUrl);
+        // เมื่อเชื่อมต่อสำเร็จ
+        state.socket.on('connect', () => {
+            console.log('Connected to Socket.IO with ID:', state.socket.id);
 
-            // เมื่อเชื่อมต่อสำเร็จ
-            state.socket.on('connect', () => {
-                console.log('Connected to Socket.IO with ID:', state.socket.id);
+            // อัปเดตสถานะการเชื่อมต่อ (ถ้ามี)
+            if (elements.socketStatus) {
+                elements.socketStatus.textContent = 'Connected';
+                elements.socketStatus.classList.add('connected');
+                elements.socketStatus.classList.remove('disconnected');
+            }
 
-                // อัปเดตสถานะการเชื่อมต่อ (ถ้ามี)
-                if (elements.socketStatus) {
-                    elements.socketStatus.textContent = 'Connected';
-                    elements.socketStatus.classList.add('connected');
-                    elements.socketStatus.classList.remove('disconnected');
-                }
+            // ถ้ากำลังดูการสนทนาอยู่ ให้เข้าร่วมห้องแชท
+            if (state.currentSessionId) {
+                state.socket.emit('join', state.currentSessionId);
+                console.log('Joining room after connect:', state.currentSessionId);
+            }
 
-                // ถ้ากำลังดูการสนทนาอยู่ ให้เข้าร่วมห้องแชท
-                if (state.currentSessionId) {
-                    state.socket.emit('join', state.currentSessionId);
-                    console.log('Joining room after connect:', state.currentSessionId);
-                }
+            // เชื่อมต่อ socket กับโมดูลค้นหาอสังหาริมทรัพย์
+            if (window.propertySearchModule) {
+                window.propertySearchModule.handleSocketEvents(state.socket);
+            }
 
-                 if (window.propertySearchModule) {
-                      window.propertySearchModule.handleSocketEvents(state.socket);
-                    }
+            // โหลดข้อมูลการสนทนาใหม่เมื่อเชื่อมต่อสำเร็จ
+            loadConversations();
+        });
 
-                // โหลดข้อมูลการสนทนาใหม่เมื่อเชื่อมต่อสำเร็จ
-                loadConversations();
-            });
+        // เพิ่ม event listener สำหรับผลการค้นหาอสังหาริมทรัพย์
+        state.socket.on('property_search_results', (data) => {
+            console.log('Property search results received:', data);
 
-            // เมื่อมีข้อความใหม่จาก Socket.IO
-            state.socket.on('new_message', (message) => {
-                console.log('New message received via socket:', message);
-
-                // 1. ตรวจสอบว่าเป็นข้อความในห้องที่กำลังดูอยู่หรือไม่
-                if (state.currentSessionId === message.room) {
-                    // เช็คว่าเป็นข้อความที่แสดงไปแล้วหรือไม่
-                    if (isMessageDuplicate(message.timestamp)) {
-                        console.log('Duplicate message from socket, ignoring:', message.text);
-                        return;
-                    }
-
-                    // แสดงข้อความในหน้าต่างแชท
-                    if (message.sender === 'user') {
-                        // เพิ่มข้อความใหม่จากผู้ใช้
-                        addMessage('user', message.text, '', message.timestamp);
-                    } else if (message.sender === 'bot') {
-                        // เพิ่มข้อความใหม่จากบอท
-                        addMessage('bot', message.text, '', message.timestamp);
-                    } else if (message.sender === 'admin') {
-                        // แสดงข้อความจากแอดมินคนอื่นๆ (ถ้ามี) - เช็คจาก ID ของแอดมิน
-                        if (message.adminId !== state.adminInfo.id) {
-                            addMessage('admin', message.text, message.adminName || 'Admin', message.timestamp);
-                        }
-                    }
-                }
-
-                // 2. อัพเดตข้อมูลการสนทนาใน state โดยไม่โหลดข้อมูลใหม่
-                const sessionId = message.room;
-
-                // ถ้ายังไม่มีข้อมูลการสนทนานี้ให้โหลดข้อมูลใหม่
-                if (!state.conversations[sessionId]) {
-                    console.log('No existing conversation for this room, fetching details...');
-                    fetchConversationAndUpdateUI(sessionId);
-                    return;
-                }
-
-                // อัพเดตข้อความล่าสุดในข้อมูลการสนทนา
-                const conversation = state.conversations[sessionId];
-                conversation.lastMessage = {
-                    text: message.text,
-                    sender: message.sender,
-                    timestamp: message.timestamp
-                };
-                conversation.lastActivity = message.timestamp;
-
-                // ถ้าเป็นการส่งข้อความจากแอดมิน ให้อัพเดตสถานะเป็น 'answered'
-                if (message.sender === 'admin') {
-                    conversation.status = 'answered';
-                } else if (message.sender === 'user' ) {
-                    // ถ้าผู้ใช้ส่งข้อความและสถานะเป็น 'answered' แล้ว ให้เปลี่ยนกลับเป็น 'waiting'
-                    conversation.status = 'waiting';
-
-                    // แสดงการแจ้งเตือนเมื่อมีข้อความใหม่จากผู้ใช้
-                    if (state.currentSessionId !== sessionId) {
-                        showNotification(`มีข้อความใหม่จาก ${conversation.userInfo?.name || 'ผู้ใช้งาน'}`);
-                    }
-                }
-
-                // อัพเดตรายการการสนทนาใน UI
-                updateConversationCounts();
-                renderConversationList();
-            });
-
-            // เมื่อมีการอัปเดตสถานะการสนทนา
-            state.socket.on('status_update', (data) => {
-                console.log('Status update received:', data);
-
-                // ถ้าเป็นสถานะของห้องที่กำลังดูอยู่
-                if (state.currentSessionId === data.room) {
-                    // อัปเดตสถานะการแสดงผล
-                    state.currentStatus = 'waiting';
-                    updateStatusDisplay('waiting');
-                }
-
-                // อัพเดตสถานะการสนทนาใน state
-                const sessionId = data.room;
-                if (state.conversations[sessionId]) {
-                    state.conversations[sessionId].status = data.status;
-
-                    // อัพเดตรายการการสนทนาใน UI
-                    updateConversationCounts();
-                    renderConversationList();
+            // ถ้ามีโมดูลค้นหาอสังหาริมทรัพย์ ให้ส่งข้อมูลไปให้โมดูล
+            if (window.propertySearchModule) {
+                if (data.success && data.data) {
+                    // ผลการค้นหาสำเร็จ
+                    window.propertySearchModule.processSearchResults(data.data);
                 } else {
-                    // ถ้ายังไม่มีข้อมูลการสนทนานี้ให้โหลดข้อมูลใหม่
-                    fetchConversationAndUpdateUI(sessionId);
+                    // ไม่พบข้อมูล
+                    window.propertySearchModule.showNoResults();
                 }
-            });
+            }
+        });
 
-            // เมื่อผู้ใช้ร้องขอให้คุยกับเจ้าหน้าที่
-            state.socket.on('user_request_agent', (data) => {
-                console.log('User requested to speak with an agent:', data);
-                // แสดงการแจ้งเตือน (สามารถเพิ่มเสียงหรือการแจ้งเตือนอื่นๆ ได้)
-                showNotification(`ผู้ใช้ต้องการคุยกับเจ้าหน้าที่ (${data.sessionId})`);
+        // เพิ่ม event listener อื่นๆ ตามต้องการ
+        // ...
 
-                // ถ้ายังไม่มีข้อมูลการสนทนานี้ให้โหลดข้อมูลใหม่
-                if (!state.conversations[data.sessionId]) {
-                    fetchConversationAndUpdateUI(data.sessionId);
-                } else {
-                    // ถ้ามีข้อมูลแล้ว ให้อัพเดตสถานะเป็น 'waiting'
-                    state.conversations[data.sessionId].status = 'waiting';
-                    // อัพเดต UI
-                    updateConversationCounts();
-                    renderConversationList();
-                }
-            });
+        return true;
+    } catch (error) {
+        console.error('Error connecting to Socket.IO:', error);
+        return false;
+    }
+}
 
-            // เมื่อมีการลบ session
-            state.socket.on('session_deleted', (data) => {
-                console.log('Session deleted:', data);
-
-                // ถ้าเป็น session ที่กำลังดูอยู่
-                if (state.currentSessionId === data.room) {
-                    // ปิดหน้าต่างแชท
-                    closeChatPanel();
-                }
-
-                // ลบข้อมูลการสนทนาออกจาก state
-                const sessionId = data.room;
-                if (state.conversations[sessionId]) {
-                    delete state.conversations[sessionId];
-
-                    // อัพเดตรายการการสนทนาใน UI
-                    updateConversationCounts();
-                    renderConversationList();
-                }
-            });
-
-            // เมื่อตัดการเชื่อมต่อ
-            state.socket.on('disconnect', () => {
-                console.log('Disconnected from Socket.IO');
-
-                // อัปเดตสถานะการเชื่อมต่อ (ถ้ามี)
-                if (elements.socketStatus) {
-                    elements.socketStatus.textContent = 'Disconnected';
-                    elements.socketStatus.classList.add('disconnected');
-                    elements.socketStatus.classList.remove('connected');
-                }
-            });
-
-            // เมื่อเกิดข้อผิดพลาดในการเชื่อมต่อ
-            state.socket.on('connect_error', (error) => {
-                console.error('Socket.IO connection error:', error);
-
-                // อัปเดตสถานะการเชื่อมต่อ (ถ้ามี)
-                if (elements.socketStatus) {
-                    elements.socketStatus.textContent = 'Connection Error';
-                    elements.socketStatus.classList.add('disconnected');
-                    elements.socketStatus.classList.remove('connected');
-                }
-            });
-            socket.on('new_property_search', (data) => {
-              console.log('New property search:', data);
-
-              // แสดงการแจ้งเตือน
-              showNotification(`มีข้อมูลการค้นหาใหม่จาก ${data.sessionId}`);
-
-              // ถ้ากำลังดูการสนทนานี้อยู่ ให้อัปเดตข้อมูล
-              if (state.currentSessionId === data.sessionId && window.propertySearchModule) {
-                window.propertySearchModule.loadSearchData(data.sessionId);
-              }
-            });
-
-            console.log('Socket.IO initialized, waiting for connection...');
-            return true;
-        } catch (error) {
-            console.error('Error connecting to Socket.IO:', error);
-            return false;
+    function connectSocketToPropertySearch() {
+        if (state.socket && window.propertySearchModule) {
+            window.propertySearchModule.setSocket(state.socket);
         }
     }
 

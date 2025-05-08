@@ -59,150 +59,195 @@ const chatState = {
     }
 
     // เชื่อมต่อกับ Socket.IO
-    function connectSocket() {
-        // ตรวจสอบว่า Socket.IO ถูกโหลดแล้วหรือไม่
-        if (typeof io === 'undefined') {
-            console.error('Socket.IO library not loaded! Make sure to include the Socket.IO client script.');
-            return false;
-        }
-
-        try {
-            // เชื่อมต่อ Socket.IO
-            const socketUrl = window.location.hostname === 'localhost' ?
-                              'http://localhost:3000' :
-                              window.location.origin;
-
-            chatState.socket = io(socketUrl);
-
-            // เมื่อเชื่อมต่อสำเร็จ
-            chatState.socket.on('connect', () => {
-                console.log('Connected to Socket.IO with ID:', chatState.socket.id);
-
-                // เข้าร่วมห้องแชทตาม sessionId
-                chatState.socket.emit('join', chatState.sessionId);
-
-                // อัปเดตสถานะการเชื่อมต่อ (ถ้ามี)
-                if (elements.socketStatus) {
-                    elements.socketStatus.textContent = 'Connected';
-                    elements.socketStatus.classList.add('connected');
-                    elements.socketStatus.classList.remove('disconnected');
-                }
-            });
-
-             chatState.socket.on('admin_status_change', (data) => {
-                    console.log('Admin status changed:', data);
-
-                    // อัปเดตสถานะแอดมิน
-                    chatState.adminActive = data.adminActive;
-
-                    // แสดงสถานะในแชท
-                    updateAdminStatusDisplay(data.adminActive, data.adminName);
-
-                    // เพิ่มข้อความแจ้งเตือนในแชท
-                    const message = data.adminActive
-                        ? `${data.adminName || 'แอดมิน'}กำลังให้บริการคุณ`
-                        : 'แชทบอทกลับมาให้บริการแล้ว';
-
-                    addMessage('system', message, '', Date.now());
-                });
-            // เมื่อมีข้อความใหม่จากเซิร์ฟเวอร์
-            chatState.socket.on('new_message', (message) => {
-                console.log('New message received via socket:', message);
-
-                // เช็คว่าเป็นข้อความที่แสดงไปแล้วหรือไม่
-                if (isMessageDuplicate(message.timestamp)) {
-                    console.log('Duplicate message from socket, ignoring:', message);
-                    return;
-                }
-
-                // แสดงเฉพาะข้อความจากแอดมินหรือบอท (ไม่ต้องแสดงข้อความของผู้ใช้เอง)
-                if (message.sender === 'admin') {
-                    // ข้อความจากแอดมิน
-                    const messageElement = document.createElement('div');
-                    messageElement.className = 'message bot-message';
-                    messageElement.setAttribute('data-message-id', message.timestamp);
-                    messageElement.innerHTML = `
-                        <div class="message-avatar">
-                            <img src="assets/icons/chat-avatar.jpg" alt="Admin">
-                        </div>
-                        <div class="message-content admin-message">
-                            <p>${escapeHTML(message.text)}</p>
-                            <small>${escapeHTML(message.adminName || 'Admin')}</small>
-                        </div>
-                    `;
-
-                    elements.chatMessages.appendChild(messageElement);
-                    scrollToBottom();
-                }
-                // ข้อความจากบอท
-                else if (message.sender === 'bot') {
-                    // จัดการกับ payload ถ้ามี
-                    if (message.payload) {
-                        const richContentHtml = processRichContent(message.payload);
-
-                        if (richContentHtml) {
-                            const messageElement = document.createElement('div');
-                            messageElement.className = 'message bot-message';
-                            messageElement.setAttribute('data-message-id', message.timestamp);
-                            messageElement.innerHTML = `
-                                <div class="message-avatar">
-                                    <img src="assets/icons/chat-avatar.jpg" alt="Bot">
-                                </div>
-                                <div class="message-content">
-                                    ${richContentHtml}
-                                </div>
-                            `;
-
-                            elements.chatMessages.appendChild(messageElement);
-                            addInteractiveListeners(messageElement);
-                            scrollToBottom();
-                        }
-                    }else
-
-                    // ถ้ามีข้อความธรรมดา
-                    if (message.text) {
-                        addMessage('bot', message.text, '', message.timestamp);
-                    }
-                }
-            });
-
-            // เมื่อมีการอัปเดตสถานะการสนทนา
-            chatState.socket.on('status_update', (data) => {
-                console.log('Conversation status updated:', data);
-                // สามารถเพิ่มการจัดการสถานะการสนทนาที่นี่ได้ (ถ้าต้องการ)
-            });
-
-            // เมื่อตัดการเชื่อมต่อ
-            chatState.socket.on('disconnect', () => {
-                console.log('Disconnected from Socket.IO');
-
-                // อัปเดตสถานะการเชื่อมต่อ (ถ้ามี)
-                if (elements.socketStatus) {
-                    elements.socketStatus.textContent = 'Disconnected';
-                    elements.socketStatus.classList.add('disconnected');
-                    elements.socketStatus.classList.remove('connected');
-                }
-            });
-
-            // เมื่อเกิดข้อผิดพลาดในการเชื่อมต่อ
-            chatState.socket.on('connect_error', (error) => {
-                console.error('Socket.IO connection error:', error);
-
-                // อัปเดตสถานะการเชื่อมต่อ (ถ้ามี)
-                if (elements.socketStatus) {
-                    elements.socketStatus.textContent = 'Connection Error';
-                    elements.socketStatus.classList.add('disconnected');
-                    elements.socketStatus.classList.remove('connected');
-                }
-            });
-
-            console.log('Socket.IO initialized, waiting for connection...');
-            return true;
-        } catch (error) {
-            console.error('Error connecting to Socket.IO:', error);
-            return false;
-        }
+function connectSocket() {
+    // ตรวจสอบว่า Socket.IO ถูกโหลดแล้วหรือไม่
+    if (typeof io === 'undefined') {
+        console.error('Socket.IO library not loaded! Make sure to include the Socket.IO client script.');
+        return false;
     }
+
+    try {
+        // เชื่อมต่อ Socket.IO
+        const socketUrl = window.location.hostname === 'localhost' ?
+                          'http://localhost:3000' :
+                          window.location.origin;
+
+        // ตรวจสอบว่ามีการเชื่อมต่ออยู่แล้วหรือไม่
+        if (chatState.socket && chatState.socket.connected) {
+            console.log('Socket is already connected:', chatState.socket.id);
+            return true;
+        }
+
+        // สร้างการเชื่อมต่อใหม่
+        chatState.socket = io(socketUrl, {
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000,
+            timeout: 10000
+        });
+
+        // เมื่อเชื่อมต่อสำเร็จ
+        chatState.socket.on('connect', () => {
+            console.log('Connected to Socket.IO with ID:', chatState.socket.id);
+
+            // เข้าร่วมห้องแชทตาม sessionId
+            chatState.socket.emit('join', chatState.sessionId);
+
+            // อัปเดตสถานะการเชื่อมต่อ (ถ้ามี)
+            if (elements.socketStatus) {
+                elements.socketStatus.textContent = 'Connected';
+                elements.socketStatus.classList.add('connected');
+                elements.socketStatus.classList.remove('disconnected');
+            }
+        });
+
+        // เมื่อมีข้อความใหม่จากเซิร์ฟเวอร์
+        chatState.socket.on('new_message', (message) => {
+            console.log('New message received via socket:', message);
+
+            // เช็คว่าเป็นข้อความที่แสดงไปแล้วหรือไม่
+            if (isMessageDuplicate(message.timestamp)) {
+                console.log('Duplicate message from socket, ignoring:', message);
+                return;
+            }
+
+            // แสดงข้อความตามประเภท
+            if (message.sender === 'admin') {
+                // ข้อความจากแอดมิน
+                const messageElement = document.createElement('div');
+                messageElement.className = 'message bot-message';
+                messageElement.setAttribute('data-message-id', message.timestamp);
+                messageElement.innerHTML = `
+                    <div class="message-avatar">
+                        <img src="assets/icons/chat-avatar.jpg" alt="Admin">
+                    </div>
+                    <div class="message-content admin-message">
+                        <p>${escapeHTML(message.text)}</p>
+                        <small>${escapeHTML(message.adminName || 'Admin')}</small>
+                    </div>
+                `;
+
+                elements.chatMessages.appendChild(messageElement);
+                scrollToBottom();
+            }
+            else if (message.sender === 'bot') {
+                // ข้อความจากบอท
+
+                // จัดการกับ payload ถ้ามี
+                if (message.payload) {
+                    const richContentHtml = processRichContent(message.payload);
+
+                    if (richContentHtml) {
+                        const messageElement = document.createElement('div');
+                        messageElement.className = 'message bot-message';
+                        messageElement.setAttribute('data-message-id', message.timestamp);
+                        messageElement.innerHTML = `
+                            <div class="message-avatar">
+                                <img src="assets/icons/chat-avatar.jpg" alt="Bot">
+                            </div>
+                            <div class="message-content">
+                                ${richContentHtml}
+                            </div>
+                        `;
+
+                        elements.chatMessages.appendChild(messageElement);
+                        addInteractiveListeners(messageElement);
+                        scrollToBottom();
+                    }
+                } else if (message.text) {
+                    // ถ้ามีข้อความธรรมดา
+                    addMessage('bot', "message.text", '', message.timestamp);
+                }
+            }
+        });
+
+        // รับการแจ้งเตือนผลการค้นหาอสังหาริมทรัพย์
+        chatState.socket.on('property_search_results', (data) => {
+            console.log('Property search results received:', data);
+
+            // ตรวจสอบว่ามีข้อมูลหรือไม่
+            if (data.success && data.data) {
+                // ขณะนี้เซิร์ฟเวอร์จะส่งข้อความผ่าน new_message อยู่แล้ว
+                // แต่เราอาจต้องการทำอะไรเพิ่มเติมกับข้อมูลค้นหาที่นี่
+                console.log('Search successful - results will be displayed via new_message event');
+            } else {
+                console.log('No search results found');
+            }
+        });
+
+        // เมื่อมีการอัปเดตสถานะแอดมิน
+        chatState.socket.on('admin_status_change', (data) => {
+            console.log('Admin status changed:', data);
+
+            // อัปเดตสถานะแอดมิน
+            chatState.adminActive = data.adminActive;
+
+            // แสดงสถานะในแชท
+            updateAdminStatusDisplay(data.adminActive, data.adminName);
+
+            // เพิ่มข้อความแจ้งเตือนในแชท
+            const message = data.adminActive
+                ? `${data.adminName || 'แอดมิน'}กำลังให้บริการคุณ`
+                : 'แชทบอทกลับมาให้บริการแล้ว';
+
+            addMessage('system', message, '', Date.now());
+        });
+
+        // เมื่อตัดการเชื่อมต่อ
+        chatState.socket.on('disconnect', () => {
+            console.log('Disconnected from Socket.IO');
+
+            // อัปเดตสถานะการเชื่อมต่อ (ถ้ามี)
+            if (elements.socketStatus) {
+                elements.socketStatus.textContent = 'Disconnected';
+                elements.socketStatus.classList.add('disconnected');
+                elements.socketStatus.classList.remove('connected');
+            }
+        });
+
+        // เมื่อกำลังพยายามเชื่อมต่อใหม่
+        chatState.socket.on('reconnecting', (attemptNumber) => {
+            console.log(`Attempting to reconnect (${attemptNumber})...`);
+
+            if (elements.socketStatus) {
+                elements.socketStatus.textContent = `Reconnecting (${attemptNumber})`;
+                elements.socketStatus.classList.add('disconnected');
+            }
+        });
+
+        // เมื่อเชื่อมต่อใหม่สำเร็จ
+        chatState.socket.on('reconnect', () => {
+            console.log('Reconnected successfully');
+
+            // เข้าร่วมห้องแชทอีกครั้ง
+            chatState.socket.emit('join', chatState.sessionId);
+
+            if (elements.socketStatus) {
+                elements.socketStatus.textContent = 'Connected';
+                elements.socketStatus.classList.add('connected');
+                elements.socketStatus.classList.remove('disconnected');
+            }
+        });
+
+        // เมื่อเกิดข้อผิดพลาดในการเชื่อมต่อ
+        chatState.socket.on('connect_error', (error) => {
+            console.error('Socket.IO connection error:', error);
+
+            // อัปเดตสถานะการเชื่อมต่อ (ถ้ามี)
+            if (elements.socketStatus) {
+                elements.socketStatus.textContent = 'Connection Error';
+                elements.socketStatus.classList.add('disconnected');
+                elements.socketStatus.classList.remove('connected');
+            }
+        });
+
+        console.log('Socket.IO initialized, waiting for connection...');
+        return true;
+    } catch (error) {
+        console.error('Error connecting to Socket.IO:', error);
+        return false;
+    }
+}
+
 function setupAdminStatusIndicator() {
     elements.adminStatusIndicator.className = 'admin-status-indicator';
     elements.adminStatusIndicator.style.display = 'none';
@@ -263,13 +308,40 @@ function updateAdminStatusDisplay(isActive, adminName) {
         const clickText = chipElement.dataset.text;
         if (!clickText) return;
 
-        const messageId = Date.now();
-        addMessage('user', clickText, '', messageId);
+        // กรณีคลิกค้นหาอสังหาริมทรัพย์
+        if (clickText === "ค้นหาอสังหาริมทรัพย์") {
+            // แสดงข้อความผู้ใช้
+            const messageId = Date.now();
+            addMessage('user', clickText, '', messageId);
 
-        sendToDialogflow(clickText, chatState.sessionId, messageId)
-            .then(handleDialogflowResponse)
-            .catch(handleDialogflowError);
+            // เรียกใช้ Socket.IO เพื่อค้นหาอสังหาริมทรัพย์โดยตรง
+            if (chatState.socket && chatState.socket.connected) {
+                chatState.socket.emit('request_property_search', {
+                    sessionId: chatState.sessionId,
+                    searchData: null, // ใช้ข้อมูลที่เก็บไว้ใน session
+                    timestamp: messageId
+                });
+
+                // แสดงข้อความกำลังค้นหา
+                const loadingMessageId = Date.now() + 1;
+                addMessage('bot', 'กำลังค้นหาอสังหาริมทรัพย์ตามเงื่อนไขของคุณ...', '', loadingMessageId);
+            } else {
+                // ถ้าไม่มีการเชื่อมต่อ Socket.IO ให้ส่งไปที่ Dialogflow ตามปกติ
+                sendToDialogflow(clickText, chatState.sessionId, messageId)
+                    .then(handleDialogflowResponse)
+                    .catch(handleDialogflowError);
+            }
+        } else {
+            // กรณีคลิก chip อื่นๆ ที่ไม่ใช่การค้นหา
+            const messageId = Date.now();
+            addMessage('user', clickText, '', messageId);
+
+            sendToDialogflow(clickText, chatState.sessionId, messageId)
+                .then(handleDialogflowResponse)
+                .catch(handleDialogflowError);
+        }
     }
+
 
 
 function addSystemMessage(text) {
@@ -578,41 +650,43 @@ function addSystemMessage(text) {
      * @param {Object} payload - Payload จาก Dialogflow
      * @returns {string} - HTML สำหรับแสดง Rich Content
      */
-    function processRichContent(payload) {
-        if (!payload.richContent || payload.richContent.length === 0) return '';
+function processRichContent(payload) {
+    if (!payload.richContent || payload.richContent.length === 0) return '';
 
-        const richContent = payload.richContent[0];
-        let richContentHTML = '';
+    const richContent = payload.richContent[0];
+    let richContentHTML = '';
 
-        // ประมวลผลแต่ละประเภทของ Rich Content
-        richContent.forEach(item => {
-            switch (item.type) {
-                case 'property_list':
-                    richContentHTML += renderPropertyList(item.properties);
-                    break;
-                case 'info':
-                    richContentHTML += renderInfoCard(item);
-                    break;
-                case 'chips':
-                    richContentHTML += renderChips(item);
-                    break;
-                case 'image':
-                    richContentHTML += renderImage(item);
-                    break;
-                case 'button':
-                    richContentHTML += renderButton(item);
-                    break;
-                case 'list':
-                    richContentHTML += renderList(item);
-                                        break;
-                  case 'custom_card':
-                    richContentHTML += renderPropertyCard(item.property_data);
-                    break;
-            }
-        });
+    // ประมวลผลแต่ละประเภทของ Rich Content
+    richContent.forEach(item => {
+        switch (item.type) {
+            case 'property_list':
+                richContentHTML += renderPropertyList(item.properties);
+                break;
+            case 'info':
+                richContentHTML += renderInfoCard(item);
+                break;
+            case 'chips':
+                richContentHTML += renderChips(item);
+                break;
+            case 'image':
+                richContentHTML += renderImage(item);
+                break;
+            case 'button':
+                richContentHTML += renderButton(item);
+                break;
+            case 'list':
+                richContentHTML += renderList(item);
+                break;
+            case 'custom_card':
+                richContentHTML += renderPropertyCard(item.property_data);
+                break;
+            default:
+                console.log('Unknown rich content type:', item.type);
+        }
+    });
 
-        return richContentHTML;
-    }
+    return richContentHTML;
+}
 
     function renderPropertyCard(property) {
       return `
@@ -633,61 +707,98 @@ function addSystemMessage(text) {
     }
 
     // เพิ่ม Event Listeners สำหรับองค์ประกอบแบบโต้ตอบ
-    function addInteractiveListeners(richContentElement) {
-        console.log('Setting up interactive elements');
+function addInteractiveListeners(richContentElement) {
+    console.log('Setting up interactive elements');
 
-        // ปุ่มและ chips
-        const buttons = richContentElement.querySelectorAll('.chat-btn, .chip');
-        buttons.forEach(button => {
-//            button.addEventListener('click', function() {
-//                const clickText = this.dataset.text;
-//                if (clickText) {
-//                    console.log('Button clicked:', clickText);
-//                    const messageId = Date.now();
-//                    addMessage('user', clickText, '', messageId);
+    // ปุ่มและ chips
+    const buttons = richContentElement.querySelectorAll('.chat-btn, .chip');
+    buttons.forEach(button => {
+        button.addEventListener('click', function() {
+            const clickText = this.dataset.text;
+            if (!clickText) return;
+
+            console.log('Button/chip clicked:', clickText);
+
+            // จัดการกรณีปุ่มค้นหาอสังหาริมทรัพย์
+            if (clickText === "ค้นหาอสังหาริมทรัพย์") {
+                const messageId = Date.now();
+                addMessage('user', clickText, '', messageId);
+
+                // เรียกใช้ Socket.IO เพื่อค้นหาอสังหาริมทรัพย์โดยตรง
+                if (chatState.socket && chatState.socket.connected) {
+                    chatState.socket.emit('request_property_search', {
+                        sessionId: chatState.sessionId,
+                        searchData: null, // ใช้ข้อมูลที่เก็บไว้ใน session
+                        timestamp: messageId
+                    });
+
+                    // แสดงข้อความกำลังค้นหา
+                    const loadingMessageId = Date.now() + 1;
+                    addMessage('bot', 'กำลังค้นหาอสังหาริมทรัพย์ตามเงื่อนไขของคุณ...', '', loadingMessageId);
+                } else {
+                    // ถ้าไม่มีการเชื่อมต่อ Socket.IO ให้ส่งไปที่ Dialogflow ตามปกติ
+                    sendToDialogflow(clickText, chatState.sessionId, messageId)
+                        .then(handleDialogflowResponse)
+                        .catch(handleDialogflowError);
+                }
+            } else {
+                // กรณีคลิก chip ปกติ
+//                const messageId = Date.now();
+//                addMessage('user', clickText, '', messageId);
 //
-//                    sendToDialogflow(clickText, chatState.sessionId, messageId)
-//                        .then(handleDialogflowResponse)
-//                        .catch(handleDialogflowError);
-//                }
-//            });
+//                sendToDialogflow(clickText, chatState.sessionId, messageId)
+//                    .then(handleDialogflowResponse)
+//                    .catch(handleDialogflowError);
+            }
         });
+    });
 
-        // List Items
-        const listItems = richContentElement.querySelectorAll('.list-item');
-        listItems.forEach(item => {
-            item.addEventListener('click', function() {
-                const clickText = this.dataset.text;
-                if (clickText) {
-                    console.log('List item clicked:', clickText);
-                    const messageId = Date.now();
-                    addMessage('user', clickText, '', messageId);
+    // List Items
+    const listItems = richContentElement.querySelectorAll('.list-item');
+    listItems.forEach(item => {
+        item.addEventListener('click', function() {
+            const clickText = this.dataset.text;
+            if (clickText) {
+                console.log('List item clicked:', clickText);
+                const messageId = Date.now();
+                addMessage('user', clickText, '', messageId);
 
-                    sendToDialogflow(clickText, chatState.sessionId, messageId)
-                        .then(handleDialogflowResponse)
-                        .catch(handleDialogflowError);
-                }
-            });
+                sendToDialogflow(clickText, chatState.sessionId, messageId)
+                    .then(handleDialogflowResponse)
+                    .catch(handleDialogflowError);
+            }
         });
+    });
 
-        // Property Cards
-        const propertyCards = richContentElement.querySelectorAll('.property-card');
-        propertyCards.forEach(card => {
-            card.addEventListener('click', function() {
-                const clickText = this.dataset.text;
-                if (clickText) {
-                    console.log('Property card clicked:', clickText);
-                    const messageId = Date.now();
-                    addMessage('user', clickText, '', messageId);
+    // Property Cards
+    const propertyCards = richContentElement.querySelectorAll('.property-card, .property-li-card');
+    propertyCards.forEach(card => {
+        card.addEventListener('click', function() {
+            const clickText = this.dataset.text;
+            const propertyId = this.dataset.propertyId;
 
-                    sendToDialogflow(clickText, chatState.sessionId, messageId)
-                        .then(handleDialogflowResponse)
-                        .catch(handleDialogflowError);
-                }
-            });
+            if (clickText) {
+                console.log(`Property card clicked: ${clickText} (ID: ${propertyId})`);
+                const messageId = Date.now();
+                addMessage('user', clickText, '', messageId);
+
+                sendToDialogflow(clickText, chatState.sessionId, messageId)
+                    .then(handleDialogflowResponse)
+                    .catch(handleDialogflowError);
+            } else if (propertyId) {
+                // ถ้าไม่มี clickText แต่มี propertyId
+                const defaultText = `ขอดูรายละเอียดของอสังหาริมทรัพย์ ${propertyId}`;
+                console.log(`Property card clicked with ID: ${propertyId}`);
+                const messageId = Date.now();
+                addMessage('user', defaultText, '', messageId);
+
+                sendToDialogflow(defaultText, chatState.sessionId, messageId)
+                    .then(handleDialogflowResponse)
+                    .catch(handleDialogflowError);
+            }
         });
-    }
-
+    });
+}
     // เลื่อนไปยังข้อความล่าสุด
     function scrollToBottom() {
         elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;

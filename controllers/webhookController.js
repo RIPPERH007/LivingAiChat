@@ -66,7 +66,7 @@ exports.handleWebhook = async (req, res) => {
       }
 
       if (queryResult.parameters.price) {
-        searchParams.price = parsePrice(queryResult.parameters.price);
+        searchParams.price = queryResult.parameters.price;
       }
 
       if (queryResult.parameters.location || queryResult.parameters.province) {
@@ -258,7 +258,11 @@ function createPropertyPayload(propertyData) {
 function mapPropertyType(propertyType) {
   if (!propertyType) return null;
 
-  const type = propertyType.toLowerCase();
+  if (typeof propertyType === 'number') {
+    return propertyType;
+  }
+
+  const type = typeof propertyType === 'string' ? propertyType.toLowerCase() : '';
 
   if (type.includes('คอนโด')) return 1;
   if (type.includes('บ้าน') || type.includes('บ้านเดี่ยว')) return 2;
@@ -266,12 +270,6 @@ function mapPropertyType(propertyType) {
   if (type.includes('ที่ดิน')) return 4;
   if (type.includes('อพาร์ทเม้นท์') || type.includes('อพาร์ทเม้น')) return 5;
 
-  // กรณีไม่มีข้อมูลที่ตรงกัน แต่เป็นตัวเลข
-  if (/^[1-5]$/.test(propertyType)) {
-    return parseInt(propertyType);
-  }
-
-  // กรณีไม่มีข้อมูลที่ตรงกัน
   return null;
 }
 
@@ -279,33 +277,28 @@ function mapPropertyType(propertyType) {
 function mapTransactionType(transactionType) {
   if (!transactionType) return null;
 
-  const type = transactionType.toLowerCase();
+  const type = typeof transactionType === 'string' ? transactionType.toLowerCase() : '';
 
-  if (type.includes('ขาย')) return 'ขาย';
-  if (type.includes('เช่า')) return 'เช่า';
+  if (type.includes('ขาย') || type === 'sale' || type === 'buy') return 'ขาย';
+  if (type.includes('เช่า') || type === 'rent') return 'เช่า';
+  if (type.includes('เซ้ง')) return 'เซ้ง';
 
-  // กรณีไม่มีข้อมูลที่ตรงกัน
-  return null;
+  return transactionType;
 }
 
-// ฟังก์ชันแปลงราคาเป็นตัวเลข
-function parsePrice(price) {
-  if (!price) return null;
+function formatPrice(price) {
+  if (!price) return '-';
 
-  // ตัวอย่างการแปลงค่า "ไม่เกิน 5 ล้าน" เป็น 5000000
+  let numPrice;
   if (typeof price === 'string') {
-    if (price.includes('ล้าน')) {
-      const match = price.match(/(\d+(\.\d+)?)\s*ล้าน/);
-      if (match) {
-        return parseFloat(match[1]) * 1000000;
-      }
-    }
-
-    // แปลงเป็นเลขล้วน (ตัดหน่วยและเครื่องหมายออก)
-    return price.replace(/[^\d]/g, '');
+    numPrice = parseFloat(price.replace(/[^\d.-]/g, ''));
+  } else {
+    numPrice = price;
   }
 
-  return price;
+  if (isNaN(numPrice)) return price;
+
+  return numPrice.toLocaleString();
 }
 
 // ฟังก์ชันแปลงทำเล/จังหวัดเป็น zone_id
