@@ -157,7 +157,7 @@ io.on('connection', (socket) => {
     } else if (data.sender === 'bot') {
       // ส่งข้อความของบอทเสมอ ไม่ว่าแอดมินจะแอคทีฟหรือไม่
       console.log('Sending bot message to room:', data.room);
-//      socket.to(data.room).emit('new_message', data);
+      socket.to(data.room).emit('new_message', data);
 
       // บันทึกข้อความบอทลงในประวัติการสนทนา
       if (conversations[data.room]) {
@@ -538,7 +538,7 @@ app.post('/api/dialogflow', async (req, res) => {
     // สร้างข้อความบอทเพียงครั้งเดียว
     const botMessage = {
       sender: 'bot',
-      text: "botMessageText",
+      text: botMessageText,
       intent: detectedIntent,
       timestamp: Date.now(),
       room: currentSessionId

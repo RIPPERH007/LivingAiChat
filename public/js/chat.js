@@ -155,7 +155,7 @@ function connectSocket() {
                     }
                 } else if (message.text) {
                     // ถ้ามีข้อความธรรมดา
-                    addMessage('bot', "message.text", '', message.timestamp);
+                    addMessage('bot', message.text, '', message.timestamp);
                 }
             }
         });
