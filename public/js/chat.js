@@ -604,11 +604,32 @@ function addSystemMessage(text) {
                     break;
                 case 'list':
                     richContentHTML += renderList(item);
+                                        break;
+                  case 'custom_card':
+                    richContentHTML += renderPropertyCard(item.property_data);
                     break;
             }
         });
 
         return richContentHTML;
+    }
+
+    function renderPropertyCard(property) {
+      return `
+        <div class="property-li-card" data-property-id="${property.id}">
+          <div class="property-li-image">
+            <img src="${property.imageUrl}" alt="${property.title}">
+            <div class="property-li-tag">${property.tag}</div>
+          </div>
+          <div class="property-li-info">
+            <div class="property-li-title">${property.tag} ${property.title}</div>
+            <div class="property-li-location">
+              <i class="fas fa-map-marker-alt"></i> ${property.location}
+            </div>
+            <div class="property-li-price">฿${property.price}</div>
+          </div>
+        </div>
+      `;
     }
 
     // เพิ่ม Event Listeners สำหรับองค์ประกอบแบบโต้ตอบ
@@ -618,18 +639,18 @@ function addSystemMessage(text) {
         // ปุ่มและ chips
         const buttons = richContentElement.querySelectorAll('.chat-btn, .chip');
         buttons.forEach(button => {
-            button.addEventListener('click', function() {
-                const clickText = this.dataset.text;
-                if (clickText) {
-                    console.log('Button clicked:', clickText);
-                    const messageId = Date.now();
-                    addMessage('user', clickText, '', messageId);
-
-                    sendToDialogflow(clickText, chatState.sessionId, messageId)
-                        .then(handleDialogflowResponse)
-                        .catch(handleDialogflowError);
-                }
-            });
+//            button.addEventListener('click', function() {
+//                const clickText = this.dataset.text;
+//                if (clickText) {
+//                    console.log('Button clicked:', clickText);
+//                    const messageId = Date.now();
+//                    addMessage('user', clickText, '', messageId);
+//
+//                    sendToDialogflow(clickText, chatState.sessionId, messageId)
+//                        .then(handleDialogflowResponse)
+//                        .catch(handleDialogflowError);
+//                }
+//            });
         });
 
         // List Items

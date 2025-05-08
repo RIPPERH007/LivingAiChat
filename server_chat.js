@@ -205,23 +205,31 @@ io.on('connection', (socket) => {
 /**
  * API สำหรับส่งข้อความไปยัง Dialogflow
  */
+/**
+ * API สำหรับส่งข้อความไปยัง Dialogflow
+ */
+/**
+ * API สำหรับส่งข้อความไปยัง Dialogflow
+ */
 app.post('/api/dialogflow', async (req, res) => {
   try {
     const { query, sessionId, userInfo } = req.body;
     const currentSessionId = sessionId || uuid.v4();
+
     // ตรวจสอบว่ามีแอดมินแอคทีฟหรือไม่
     const isAdminActive = sessionData[currentSessionId]?.adminActive === true ||
                           conversations[currentSessionId]?.adminActive === true;
 
     // ถ้าแอดมินแอคทีฟ ให้ส่งข้อความแจ้งเตือนว่าแอดมินกำลังให้บริการ
     if (isAdminActive) {
-          return res.json({
-            success: true,
-            message: 'แอดมินกำลังให้บริการคุณอยู่ กรุณารอสักครู่',
-            sessionId: currentSessionId,
-            adminActive: true
-          });
-        }
+      return res.json({
+        success: true,
+        message: 'แอดมินกำลังให้บริการคุณอยู่ กรุณารอสักครู่',
+        sessionId: currentSessionId,
+        adminActive: true
+      });
+    }
+
     // ตรวจสอบและสร้างข้อมูลสำหรับ session
     if (!sessionData[currentSessionId]) {
       sessionData[currentSessionId] = {
@@ -230,27 +238,18 @@ app.post('/api/dialogflow', async (req, res) => {
           email: null,
           phone: null,
           timestamp: Date.now()
+        },
+        currentStep: 1, // เพิ่มตัวแปรเก็บ step ปัจจุบัน
+        propertySearch: {
+          province: null,         // จังหวัด (step 1)
+          facilities: null,       // สิ่งอำนวยความสะดวก (step 2)
+          price: null,            // ราคา (step 3)
+          transactionType: null,  // เช่า, ซื้อ, ขาย, เซ้ง (step 4)
+          location: null,         // ทำเลที่ตั้ง (step 5)
+          propertyType: null,     // ประเภทอสังหาริมทรัพย์ (step 6)
+          isComplete: false,
+          searchReady: false
         }
-      };
-    }
-
-    if (!sessionData[currentSessionId].propertySearch) {
-      sessionData[currentSessionId].propertySearch = {
-        province: null,         // จังหวัด (step 1)
-        facilities: null,       // สิ่งอำนวยความสะดวก (step 2)
-        price: null,            // ราคา (step 3)
-        transactionType: null,  // เช่า, ซื้อ, ขาย, เซ้ง (step 4)
-        location: null,         // ทำเลที่ตั้ง (step 5)
-        propertyType: null      // ประเภทอสังหาริมทรัพย์ (step 6)
-      };
-    }
-
-    // อัปเดตข้อมูลผู้ใช้
-    if (userInfo) {
-      sessionData[currentSessionId].userInfo = {
-        ...sessionData[currentSessionId].userInfo,
-        ...userInfo,
-        timestamp: sessionData[currentSessionId].userInfo.timestamp
       };
     }
 
@@ -271,10 +270,29 @@ app.post('/api/dialogflow', async (req, res) => {
       },
     };
 
+    // เพิ่ม queryParams เพื่อบังคับให้ตรงกับ step ปัจจุบัน
+    // เฉพาะเมื่อไม่ใช่การค้นหาโดยตรง (ข้อความไม่ใช่ "ค้นหาอสังหาริมทรัพย์")
+    if (!query.includes("ค้นหาอสังหาริมทรัพย์")) {
+      const currentStep = sessionData[currentSessionId].currentStep || 1;
+      console.log(`Current Step for ${currentSessionId}: ${currentStep}`);
+
+      // บังคับให้เรียกใช้ intent ตาม step ปัจจุบัน
+      request.queryParams = {
+        contexts: [
+          {
+            name: `${sessionPath}/contexts/force_step${currentStep}`,
+            lifespanCount: 1
+          }
+        ]
+      };
+    }
+
     // ส่ง request ไปยัง Dialogflow
     const responses = await sessionClient.detectIntent(request);
     const result = responses[0].queryResult;
     const detectedIntent = result.intent ? result.intent.displayName : 'ไม่พบ intent';
+
+    console.log(`Detected Intent: ${detectedIntent}`);
 
     // บันทึกข้อความลงในประวัติการสนทนา
     if (!conversations[currentSessionId]) {
@@ -286,47 +304,46 @@ app.post('/api/dialogflow', async (req, res) => {
     }
 
     // สร้างข้อมูลข้อความของผู้ใช้
-   const userMessage = {
-     sender: 'user',
-     text: query,
-     timestamp: Date.now(),
-     room: currentSessionId
-   };
+    const userMessage = {
+      sender: 'user',
+      text: query,
+      timestamp: Date.now(),
+      room: currentSessionId
+    };
 
-   // กำหนดค่าเริ่มต้นสำหรับข้อความบอท
-   let botMessageText = 'ไม่เข้าใจคำถาม กรุณาลองใหม่อีกครั้ง'; // ค่าเริ่มต้น
+    // กำหนดค่าเริ่มต้นสำหรับข้อความบอท
+    let botMessageText = 'ไม่เข้าใจคำถาม กรุณาลองใหม่อีกครั้ง'; // ค่าเริ่มต้น
 
-   // ปรับลำดับความสำคัญในการเลือกข้อความ
-   // 1. ใช้ข้อความจาก webhook ถ้ามี
-   if (result.webhookUsed && result.fulfillmentMessages && result.fulfillmentMessages.length > 0) {
-     // ดึงข้อความจาก webhook
-     const webhookMessage = result.fulfillmentMessages.find(msg => msg.text && msg.text.text && msg.text.text.length > 0);
+    // ปรับลำดับความสำคัญในการเลือกข้อความ
+    // 1. ใช้ข้อความจาก webhook ถ้ามี
+    if (result.webhookUsed && result.fulfillmentMessages && result.fulfillmentMessages.length > 0) {
+      // ดึงข้อความจาก webhook
+      const webhookMessage = result.fulfillmentMessages.find(msg => msg.text && msg.text.text && msg.text.text.length > 0);
 
-     if (webhookMessage) {
-       botMessageText = webhookMessage.text.text[0];
-       console.log('Using text from webhook message:', botMessageText);
-     }
-     // ถ้าไม่มีข้อความจาก webhook ให้ใช้ fulfillmentText
-     else if (result.fulfillmentText && result.fulfillmentText.trim() !== '') {
-       botMessageText = result.fulfillmentText;
-       console.log('Using fulfillmentText because webhook message is empty:', botMessageText);
-     }
-   }
-   // 2. ถ้าไม่ใช้ webhook ให้ใช้ fulfillmentText โดยตรง
-   else if (result.fulfillmentText && result.fulfillmentText.trim() !== '') {
-     botMessageText = result.fulfillmentText;
-     console.log('Using fulfillmentText (no webhook):', botMessageText);
-   }
+      if (webhookMessage) {
+        botMessageText = webhookMessage.text.text[0];
+        console.log('Using text from webhook message:', botMessageText);
+      }
+      // ถ้าไม่มีข้อความจาก webhook ให้ใช้ fulfillmentText
+      else if (result.fulfillmentText && result.fulfillmentText.trim() !== '') {
+        botMessageText = result.fulfillmentText;
+        console.log('Using fulfillmentText because webhook message is empty:', botMessageText);
+      }
+    }
+    // 2. ถ้าไม่ใช้ webhook ให้ใช้ fulfillmentText โดยตรง
+    else if (result.fulfillmentText && result.fulfillmentText.trim() !== '') {
+      botMessageText = result.fulfillmentText;
+      console.log('Using fulfillmentText (no webhook):', botMessageText);
+    }
 
-   // สร้างข้อความบอทเพียงครั้งเดียว
-   const botMessage = {
-     sender: 'bot',
-     text: botMessageText,
-     intent: detectedIntent,
-     timestamp: Date.now(),
-     room: currentSessionId
-   };
-
+    // สร้างข้อความบอทเพียงครั้งเดียว
+    const botMessage = {
+      sender: 'bot',
+      text: botMessageText,
+      intent: detectedIntent,
+      timestamp: Date.now(),
+      room: currentSessionId
+    };
 
     // บันทึกข้อความ
     conversations[currentSessionId].messages.push(userMessage);
@@ -341,113 +358,272 @@ app.post('/api/dialogflow', async (req, res) => {
     // เพิ่มบรรทัดนี้เพื่อส่งข้อความบอทไปยังผู้ใช้เสมอ
     io.to(currentSessionId).emit('new_message', botMessage);
 
-    // เก็บข้อมูลตาม intent ที่ตรวจพบ
-    if (detectedIntent === 'provide_user_info') {
+    // ตรวจสอบ intent และเก็บข้อมูลตามขั้นตอน
+    let shouldMoveToNextStep = false;
+
+    if (detectedIntent === 'step1') {
+      // เก็บข้อมูลจังหวัด
       const parameters = result.parameters.fields;
-      if (parameters) {
-        if (parameters.name && parameters.name.stringValue) {
-          sessionData[currentSessionId].userInfo.name = parameters.name.stringValue;
-        }
-        if (parameters.email && parameters.email.stringValue) {
-          sessionData[currentSessionId].userInfo.email = parameters.email.stringValue;
-        }
-        if (parameters.phone && parameters.phone.stringValue) {
-          sessionData[currentSessionId].userInfo.phone = parameters.phone.stringValue;
+      if (parameters && parameters.province) {
+        sessionData[currentSessionId].propertySearch.province = parameters.province.stringValue || null;
+        console.log("Updated step1 - province:", sessionData[currentSessionId].propertySearch.province);
+        shouldMoveToNextStep = true;
+      } else {
+        // ถ้าไม่มีพารามิเตอร์ province แต่ได้รับ intent step1 ให้เก็บข้อความผู้ใช้
+        sessionData[currentSessionId].propertySearch.province = query;
+        console.log("Updated step1 with raw query:", query);
+        shouldMoveToNextStep = true;
+      }
+    } else if (detectedIntent === 'step2') {
+      // เก็บข้อมูลสิ่งอำนวยความสะดวก
+      const parameters = result.parameters.fields;
+      if (parameters && parameters.facilities) {
+        sessionData[currentSessionId].propertySearch.facilities = parameters.facilities.stringValue || null;
+        console.log("Updated step2 - facilities:", sessionData[currentSessionId].propertySearch.facilities);
+        shouldMoveToNextStep = true;
+      } else {
+        // ถ้าไม่มีพารามิเตอร์ facilities แต่ได้รับ intent step2 ให้เก็บข้อความผู้ใช้
+        sessionData[currentSessionId].propertySearch.facilities = query;
+        console.log("Updated step2 with raw query:", query);
+        shouldMoveToNextStep = true;
+      }
+    } else if (detectedIntent === 'step3') {
+      // เก็บข้อมูลราคา
+      const parameters = result.parameters.fields;
+      if (parameters && parameters.price) {
+        sessionData[currentSessionId].propertySearch.price = parameters.price.stringValue || null;
+        console.log("Updated step3 - price:", sessionData[currentSessionId].propertySearch.price);
+        shouldMoveToNextStep = true;
+      } else {
+        // ถ้าไม่มีพารามิเตอร์ price แต่ได้รับ intent step3 ให้เก็บข้อความผู้ใช้
+        sessionData[currentSessionId].propertySearch.price = query;
+        console.log("Updated step3 with raw query:", query);
+        shouldMoveToNextStep = true;
+      }
+    } else if (detectedIntent === 'step4') {
+      // เก็บข้อมูลประเภทธุรกรรม
+      const parameters = result.parameters.fields;
+      if (parameters && parameters.transaction_type) {
+        sessionData[currentSessionId].propertySearch.transactionType = parameters.transaction_type.stringValue || null;
+        console.log("Updated step4 - transactionType:", sessionData[currentSessionId].propertySearch.transactionType);
+        shouldMoveToNextStep = true;
+      } else {
+        // ถ้าไม่มีพารามิเตอร์ transaction_type แต่ได้รับ intent step4 ให้เก็บข้อความผู้ใช้
+        sessionData[currentSessionId].propertySearch.transactionType = query;
+        console.log("Updated step4 with raw query:", query);
+        shouldMoveToNextStep = true;
+      }
+    } else if (detectedIntent === 'step5') {
+      // เก็บข้อมูลทำเลที่ตั้ง
+      const parameters = result.parameters.fields;
+      if (parameters && parameters.location) {
+        sessionData[currentSessionId].propertySearch.location = parameters.location.stringValue || null;
+        console.log("Updated step5 - location:", sessionData[currentSessionId].propertySearch.location);
+        shouldMoveToNextStep = true;
+      } else {
+        // ถ้าไม่มีพารามิเตอร์ location แต่ได้รับ intent step5 ให้เก็บข้อความผู้ใช้
+        sessionData[currentSessionId].propertySearch.location = query;
+        console.log("Updated step5 with raw query:", query);
+        shouldMoveToNextStep = true;
+      }
+    } else if (detectedIntent === 'step6') {
+      // เก็บข้อมูลประเภทอสังหาริมทรัพย์
+      const parameters = result.parameters.fields;
+      if (parameters && parameters.property_type) {
+        sessionData[currentSessionId].propertySearch.propertyType = parameters.property_type.stringValue || null;
+        console.log("Updated step6 - propertyType:", sessionData[currentSessionId].propertySearch.propertyType);
+        shouldMoveToNextStep = true;
+      } else {
+        // ถ้าไม่มีพารามิเตอร์ property_type แต่ได้รับ intent step6 ให้เก็บข้อความผู้ใช้
+        sessionData[currentSessionId].propertySearch.propertyType = query;
+        console.log("Updated step6 with raw query:", query);
+        shouldMoveToNextStep = true;
+      }
+
+      // ตั้งค่าว่าเสร็จสมบูรณ์เมื่อถึง step 6
+      sessionData[currentSessionId].propertySearch.isComplete = true;
+    } else if (query.includes("ค้นหาอสังหาริมทรัพย์") || detectedIntent === 'search_property') {
+        // ถ้าผู้ใช้สั่งค้นหา ให้เรียก API และแสดงผลลัพธ์
+        try {
+          console.log("Searching for properties with current data:", sessionData[currentSessionId].propertySearch);
+          const response = await axios.get('https://ownwebdev1.livinginsider.com/api/v1/test_order');
+
+          if (response.data && response.data.data && response.data.data.length > 0) {
+            // ปรับข้อมูลให้เป็นรูปแบบที่ต้องการแสดงผล
+            const propertyData = response.data.data.map(item => ({
+              id: item.web_id ? item.web_id.toString() : '',
+              imageUrl: item.photo || '',
+              title: item.name || 'ไม่ระบุชื่อ',
+              location: item.zone || 'ไม่ระบุที่ตั้ง',
+              price: item.price || '-',
+              tag: item.tag || 'ขาย',
+              link: item.link || '#',
+              details: item.details || '',
+              rooms: item.rooms || '',
+              bathrooms: item.bathrooms || '',
+              size: item.size || '',
+              contactPhone: item.contact_phone || ''
+            }));
+
+            // สร้าง payload สำหรับแสดงผลการค้นหา
+            const searchResultPayload = {
+              richContent: [[
+                {
+                  type: "info",
+                  title: "ผลการค้นหาอสังหาริมทรัพย์",
+                  subtitle: `พบทั้งหมด ${response.data.count || propertyData.length} รายการ`
+                }
+              ]]
+            };
+
+            // เพิ่มการ์ดอสังหาริมทรัพย์แต่ละรายการ
+            propertyData.forEach(property => {
+              // สร้าง custom card layout ที่มีลักษณะตามรูปที่ 2
+              searchResultPayload.richContent[0].push({
+                type: "info",
+                title: `${property.tag} ${property.title}`,
+                subtitle: `${property.location}\n฿${property.price}`,
+                actionLink: property.link,
+                image: {
+                  src: {
+                    rawUrl: property.imageUrl
+                  }
+                }
+              });
+            });
+
+            // ส่ง payload กลับไปแสดงผล
+            const searchResultMessage = {
+              sender: 'bot',
+              intent: 'search_results',
+              timestamp: Date.now() + 1,
+              room: currentSessionId,
+              payload: searchResultPayload
+            };
+
+            io.to(currentSessionId).emit('new_message', searchResultMessage);
+
+            // บันทึกข้อความการค้นหาลงในประวัติการสนทนา
+            conversations[currentSessionId].messages.push({
+              sender: 'bot',
+              intent: 'search_results',
+              timestamp: Date.now() + 1,
+              payload: searchResultPayload
+            });
+          }
+        } catch (error) {
+          console.error("Error searching properties:", error);
         }
       }
-    } else if (detectedIntent === 'request_agent') {
-      conversations[currentSessionId].status = 'waiting';
-      io.emit('user_request_agent', {
-        sessionId: currentSessionId,
-        timestamp: Date.now()
-      });
-      console.log('User requested to speak with an agent. Session ID:', currentSessionId);
+
+    // อัปเดต step ปัจจุบันถ้าจำเป็น
+    if (shouldMoveToNextStep) {
+      const currentStep = sessionData[currentSessionId].currentStep || 1;
+      const nextStep = currentStep < 6 ? currentStep + 1 : 6;
+      sessionData[currentSessionId].currentStep = nextStep;
+      console.log(`Moving from step ${currentStep} to step ${nextStep} for ${currentSessionId}`);
     }
 
-   if (detectedIntent === 'step1') {
-     // เก็บข้อมูลจังหวัด
-     const parameters = result.parameters.fields;
-     if (parameters && parameters.province) {
-       sessionData[currentSessionId].propertySearch.province = parameters.province.stringValue || null;
-     }
-   } else if (detectedIntent === 'step2') {
-     // เก็บข้อมูลสิ่งอำนวยความสะดวก
-     const parameters = result.parameters.fields;
-     if (parameters && parameters.facilities) {
-       sessionData[currentSessionId].propertySearch.facilities = parameters.facilities.stringValue || null;
-     }
-   } else if (detectedIntent === 'step3') {
-     // เก็บข้อมูลราคา
-     const parameters = result.parameters.fields;
-     if (parameters && parameters.price) {
-       sessionData[currentSessionId].propertySearch.price = parameters.price.stringValue || null;
-     }
-   } else if (detectedIntent === 'step4') {
-     // เก็บข้อมูลประเภทธุรกรรม
-     const parameters = result.parameters.fields;
-     if (parameters && parameters.transaction_type) {
-       sessionData[currentSessionId].propertySearch.transactionType = parameters.transaction_type.stringValue || null;
-     }
-   } else if (detectedIntent === 'step5') {
-     // เก็บข้อมูลทำเลที่ตั้ง
-     const parameters = result.parameters.fields;
-     if (parameters && parameters.location) {
-       sessionData[currentSessionId].propertySearch.location = parameters.location.stringValue || null;
-     }
-   } else if (detectedIntent === 'step6') {
-     // เก็บข้อมูลประเภทอสังหาริมทรัพย์
-     const parameters = result.parameters.fields;
-     if (parameters && parameters.property_type) {
-       sessionData[currentSessionId].propertySearch.propertyType = parameters.property_type.stringValue || null;
-     }
+    // นับจำนวน step ที่มีข้อมูลแล้ว
+    const search = sessionData[currentSessionId].propertySearch;
+    let completedSteps = 0;
+    if (search.province) completedSteps++;
+    if (search.facilities) completedSteps++;
+    if (search.price) completedSteps++;
+    if (search.transactionType) completedSteps++;
+    if (search.location) completedSteps++;
+    if (search.propertyType) completedSteps++;
 
-     // ถ้าครบทั้ง 6 steps แล้ว ให้เพิ่มสถานะการค้นหา
-     const search = sessionData[currentSessionId].propertySearch;
-     if (search.province && search.facilities && search.price &&
-         search.transactionType && search.location && search.propertyType) {
-       sessionData[currentSessionId].propertySearch.isComplete = true;
+    console.log(`Completed steps for ${currentSessionId}: ${completedSteps}/6`);
 
-       // แจ้งเตือนแอดมินว่ามีการค้นหาใหม่
-       io.emit('new_property_search', {
-         sessionId: currentSessionId,
-         searchData: sessionData[currentSessionId].propertySearch,
-         timestamp: Date.now()
-       });
-     }
-   }
+    // ถ้าครบ 6 steps หรือมีข้อมูลเพียงพอ (อย่างน้อย 3 steps)
+    if (completedSteps >= 3) {
+      sessionData[currentSessionId].propertySearch.searchReady = true;
+    }
+
+    // ตรวจสอบ custom payload
+    let payloadSent = false;
+
+    if (result.fulfillmentMessages && result.fulfillmentMessages.length > 0) {
+      for (const message of result.fulfillmentMessages) {
+        if (message.payload) {
+          const payload = struct.decode(message.payload);
+
+          // ส่ง payload เพียงครั้งเดียว
+          const payloadMessage = {
+            sender: 'bot',
+            intent: detectedIntent,
+            timestamp: Date.now() + 1, // +1 เพื่อให้ timestamp ไม่ซ้ำกับข้อความข้างต้น
+            room: currentSessionId,
+            payload: payload
+          };
+
+          console.log('Sending bot message with payload via Socket.IO');
+          io.to(currentSessionId).emit('new_message', payloadMessage);
+          payloadSent = true;
+
+          // บันทึกข้อความพาโหลดลงในประวัติการสนทนา
+          conversations[currentSessionId].messages.push({
+            sender: 'bot',
+            intent: detectedIntent,
+            timestamp: Date.now() + 1,
+            payload: payload
+          });
+        }
+      }
+    }
+
+    // ถ้าไม่มี payload แต่มีข้อมูลพอที่จะค้นหาได้แล้ว (อย่างน้อย 3 steps) ให้สร้าง payload ใหม่แล้วใส่ chips ค้นหา
+    // แสดง chips ตั้งแต่ step 4 เป็นต้นไป
+    if (!payloadSent && sessionData[currentSessionId].currentStep >= 4 ) {
+      const searchChipsPayload = {
+        richContent: [[
+          {
+            type: "info",
+            title: "ข้อมูลการค้นหาของคุณ",
+            subtitle: `มีข้อมูลการค้นหา ${completedSteps} รายการจากทั้งหมด 6 รายการ`
+          },
+          {
+            type: "chips",
+            options: [
+              {
+                text: "ค้นหาอสังหาริมทรัพย์"
+              }
+            ]
+          }
+        ]]
+      };
+
+      const searchChipsMessage = {
+        sender: 'bot',
+        intent: 'search_property',
+        timestamp: Date.now() + 2,
+        room: currentSessionId,
+        payload: searchChipsPayload
+      };
+
+      console.log('Sending search chips message via Socket.IO');
+      io.to(currentSessionId).emit('new_message', searchChipsMessage);
+
+      // บันทึกข้อความ chips ค้นหาลงในประวัติการสนทนา
+      conversations[currentSessionId].messages.push({
+        sender: 'bot',
+        intent: 'search_property',
+        timestamp: Date.now() + 2,
+        payload: searchChipsPayload
+      });
+    }
 
     // สร้าง response กลับไปยัง Live Chat
     const responseData = {
       success: true,
-      message: result.fulfillmentText || 'ขออภัย ไม่เข้าใจคำถามของคุณ กรุณาลองใหม่อีกครั้ง', // แก้ไขข้อความนี้
+      message: botMessageText,
       intent: detectedIntent,
       confidence: result.intentDetectionConfidence,
       sessionId: currentSessionId,
-      sessionData: sessionData[currentSessionId]
+      sessionData: sessionData[currentSessionId] // ส่งข้อมูล session กลับไปด้วยเพื่อใช้ตรวจสอบที่ฝั่งไคลเอนต์
     };
 
-    // ตรวจสอบ custom payload
-let payloadSent = false;
-if (result.fulfillmentMessages && result.fulfillmentMessages.length > 0) {
-  for (const message of result.fulfillmentMessages) {
-    if (message.payload && !payloadSent) {
-      const payload = struct.decode(message.payload);
-
-      // ส่ง payload เพียงครั้งเดียว
-      const payloadMessage = {
-        sender: 'bot',
-        intent: detectedIntent,
-        timestamp: Date.now() + 1, // +1 เพื่อให้ timestamp ไม่ซ้ำกับข้อความข้างต้น
-        room: currentSessionId,
-        payload: payload
-      };
-
-      console.log('Sending bot message with payload via Socket.IO');
-      io.to(currentSessionId).emit('new_message', payloadMessage);
-      payloadSent = true;
-    }
-  }
-}
     res.json(responseData);
   } catch (error) {
     console.error('Error:', error);
@@ -456,8 +632,7 @@ if (result.fulfillmentMessages && result.fulfillmentMessages.length > 0) {
       message: 'เกิดข้อผิดพลาดในการเชื่อมต่อกับ Dialogflow',
     });
   }
-});
-/**
+});/**
  * API สำหรับส่งข้อความจากแอดมิน
  */
 app.post('/api/admin/message', async (req, res) => {

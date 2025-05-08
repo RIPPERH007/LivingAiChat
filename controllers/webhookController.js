@@ -7,13 +7,11 @@ exports.handleWebhook = async (req, res) => {
   const { responseId, queryResult, session } = req.body;
 
   // แสดงข้อมูลดีบั๊ก
-  console.log('1Request Body:', JSON.stringify(req.body));
-  console.log('2Detected Intent:', queryResult.intent.displayName);
-  console.log('3Parameters:', JSON.stringify(queryResult.parameters));
-  console.log('4Query:', queryResult.queryText);
-  console.log('5Detected Intent:', queryResult.intent.displayName);
-  console.log('6Detected Intent:', queryResult.intent);
-  console.log('7Confidence:', queryResult.intentDetectionConfidence);
+  console.log('Request Body:', JSON.stringify(req.body));
+  console.log('Detected Intent:', queryResult.intent.displayName);
+  console.log('Parameters:', JSON.stringify(queryResult.parameters));
+  console.log('Query:', queryResult.queryText);
+  console.log('Confidence:', queryResult.intentDetectionConfidence);
 
   // ตรวจสอบว่ามีข้อมูลครบตามเงื่อนไขหรือไม่
   let searchParams = {};
@@ -21,13 +19,15 @@ exports.handleWebhook = async (req, res) => {
 
   // ตรวจสอบพารามิเตอร์จาก queryResult
   if (queryResult.parameters) {
-  console.log('Search Parameters:', searchParams);
+    console.log('Raw Parameters:', queryResult.parameters);
 
     // ถ้ามี fields ให้ดึงข้อมูลจาก fields
     if (queryResult.parameters.fields) {
       // ประเภทอสังหาริมทรัพย์ (property_type)
       if (queryResult.parameters.fields.property_type) {
-        searchParams.post_type = mapPropertyType(queryResult.parameters.fields.property_type.stringValue);
+        const propertyTypeValue = queryResult.parameters.fields.property_type.stringValue;
+        console.log('Property Type Value from fields:', propertyTypeValue);
+        searchParams.post_type = mapPropertyType(propertyTypeValue);
       }
 
       // ประเภทธุรกรรม (transaction_type) - เช่า/ขาย
@@ -55,7 +55,9 @@ exports.handleWebhook = async (req, res) => {
     }
     // ถ้าไม่มี fields แต่มีพารามิเตอร์โดยตรง
     else {
+      // ตรวจสอบ property_type เป็นพิเศษ
       if (queryResult.parameters.property_type) {
+        console.log('Property Type Value from direct parameters:', queryResult.parameters.property_type);
         searchParams.post_type = mapPropertyType(queryResult.parameters.property_type);
       }
 
@@ -76,6 +78,22 @@ exports.handleWebhook = async (req, res) => {
       }
     }
   }
+
+  // ตรวจสอบพารามิเตอร์ใน intent 'step6' โดยเฉพาะ
+  if (queryResult.intent && queryResult.intent.displayName === 'step6') {
+    // ดึงข้อความที่ผู้ใช้พิมพ์
+    const userText = queryResult.queryText;
+    console.log('Step6 - User text:', userText);
+
+    // กรณี intent step6 ให้วิเคราะห์ข้อความที่ผู้ใช้พิมพ์เพื่อหา property_type
+    const detectedPropertyType = detectPropertyTypeFromText(userText);
+    if (detectedPropertyType) {
+      console.log('Detected property type from text:', detectedPropertyType);
+      searchParams.post_type = detectedPropertyType;
+    }
+  }
+
+  console.log('Final Search Parameters:', searchParams);
 
   // ตรวจสอบว่ามีพารามิเตอร์อย่างน้อย 2 ตัวหรือไม่
   const paramCount = Object.keys(searchParams).length;
@@ -125,6 +143,24 @@ exports.handleWebhook = async (req, res) => {
     }
   }
 
+  // ถ้าเป็น intent 'step6'
+  if (queryResult.intent && queryResult.intent.displayName === 'step6') {
+    // ดึงข้อความที่ผู้ใช้พิมพ์
+    const userText = queryResult.queryText;
+    const detectedPropertyType = detectPropertyTypeFromText(userText);
+
+    // สร้าง response กลับไปยัง Dialogflow
+    return res.json({
+      fulfillmentMessages: [
+        {
+          text: {
+            text: [`คุณต้องการค้นหา${detectedPropertyType ? getPropertyTypeText(detectedPropertyType) : "อสังหาริมทรัพย์"} ใช่ไหมครับ ให้ผมช่วยหาข้อมูลให้นะครับ`]
+          }
+        }
+      ]
+    });
+  }
+
   // ถ้าไม่มีข้อมูลครบหรือมีข้อผิดพลาดในการค้นหา ส่งข้อมูลจาก Dialogflow กลับไปโดยตรง
   res.json({
     fulfillmentMessages: queryResult.fulfillmentMessages,
@@ -132,17 +168,65 @@ exports.handleWebhook = async (req, res) => {
   });
 };
 
+// ฟังก์ชันวิเคราะห์ข้อความเพื่อหาประเภทอสังหาริมทรัพย์
+function detectPropertyTypeFromText(text) {
+  if (!text) return null;
+
+  const lowerText = text.toLowerCase();
+
+  // คอนโด
+  if (lowerText.includes('คอนโด') || lowerText.includes('condo') || lowerText.includes('condominium')) {
+    return 1;
+  }
+
+  // บ้านเดี่ยว
+  if (lowerText.includes('บ้านเดี่ยว') || lowerText.includes('บ้าน') || lowerText.includes('house')) {
+    return 2;
+  }
+
+  // ทาวน์โฮม ทาวน์เฮ้าส์
+  if (lowerText.includes('ทาวน์โฮม') || lowerText.includes('ทาวน์เฮ้าส์') ||
+      lowerText.includes('townhome') || lowerText.includes('townhouse')) {
+    return 3;
+  }
+
+  // ที่ดิน
+  if (lowerText.includes('ที่ดิน') || lowerText.includes('land')) {
+    return 4;
+  }
+
+  // อพาร์ทเม้นท์
+  if (lowerText.includes('อพาร์ทเม้นท์') || lowerText.includes('อพาร์ทเม้น') ||
+      lowerText.includes('apartment')) {
+    return 5;
+  }
+
+  return null;
+}
+
+// ฟังก์ชันแปลงรหัสประเภทอสังหาริมทรัพย์เป็นข้อความ
+function getPropertyTypeText(propertyTypeId) {
+  switch (propertyTypeId) {
+    case 1: return "คอนโด";
+    case 2: return "บ้านเดี่ยว";
+    case 3: return "ทาวน์โฮม";
+    case 4: return "ที่ดิน";
+    case 5: return "อพาร์ทเม้นท์";
+    default: return "อสังหาริมทรัพย์";
+  }
+}
+
 // ฟังก์ชันสำหรับสร้าง payload แสดงผลข้อมูลอสังหาริมทรัพย์
 function createPropertyPayload(propertyData) {
   // สร้าง property_list สำหรับแสดงข้อมูลอสังหาริมทรัพย์
   const properties = propertyData.data.map(item => ({
-    id: item.web_id.toString(),
-    imageUrl: item.photo,
-    title: item.name,
-    location: item.zone,
-    price: item.price,
-    tag: item.tag,
-    link: item.link
+    id: item.web_id ? item.web_id.toString() : '',
+    imageUrl: item.photo || '',
+    title: item.name || 'ไม่ระบุชื่อ',
+    location: item.zone || 'ไม่ระบุที่ตั้ง',
+    price: item.price ? formatPrice(item.price) : '-',
+    tag: item.tag || 'ขาย',
+    link: item.link || '#'
   }));
 
   // สร้าง rich content สำหรับแสดงผลข้อมูลอสังหาริมทรัพย์
@@ -177,10 +261,15 @@ function mapPropertyType(propertyType) {
   const type = propertyType.toLowerCase();
 
   if (type.includes('คอนโด')) return 1;
-  if (type.includes('บ้าน')) return 2;
+  if (type.includes('บ้าน') || type.includes('บ้านเดี่ยว')) return 2;
   if (type.includes('ทาวน์เฮ้าส์') || type.includes('ทาวน์โฮม')) return 3;
   if (type.includes('ที่ดิน')) return 4;
   if (type.includes('อพาร์ทเม้นท์') || type.includes('อพาร์ทเม้น')) return 5;
+
+  // กรณีไม่มีข้อมูลที่ตรงกัน แต่เป็นตัวเลข
+  if (/^[1-5]$/.test(propertyType)) {
+    return parseInt(propertyType);
+  }
 
   // กรณีไม่มีข้อมูลที่ตรงกัน
   return null;
@@ -251,4 +340,23 @@ function mapProjectToId(projectName) {
 
   // กรณีไม่มีข้อมูลที่ตรงกัน
   return null;
+}
+
+// ฟังก์ชันจัดรูปแบบราคา
+function formatPrice(price) {
+  if (!price) return '-';
+
+  let numPrice;
+  if (typeof price === 'string') {
+    // ลบตัวอักษรที่ไม่ใช่ตัวเลขออก
+    numPrice = parseFloat(price.replace(/[^\d.-]/g, ''));
+  } else {
+    numPrice = price;
+  }
+
+  // ตรวจสอบว่าเป็นตัวเลขที่ถูกต้องหรือไม่
+  if (isNaN(numPrice)) return price;
+
+  // จัดรูปแบบตัวเลข
+  return numPrice.toLocaleString();
 }
