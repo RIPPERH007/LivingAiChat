@@ -616,17 +616,27 @@ app.post('/api/dialogflow', async (req, res) => {
         sessionData[currentSessionId].propertySearch.zoneId = query;
         console.log("Updated step2 with raw query:", query);
         shouldMoveToNextStep = true;
-    } else if (detectedIntent === 'step3') {
-      // เก็บข้อมูลราคา
-      const parameters = result.parameters.fields;
+    }  else if (detectedIntent === 'step3') {
+        // เก็บข้อมูลราคา
+        const parameters = result.parameters.fields;
         // ถ้าไม่มีพารามิเตอร์ price แต่ได้รับ intent step3 ให้เก็บข้อความผู้ใช้
         sessionData[currentSessionId].propertySearch.price = query;
         console.log("Updated step3 with raw query:", query);
         shouldMoveToNextStep = true;
 
-      sessionData[currentSessionId].propertySearch.isComplete = true;
+        // ตั้งค่าให้ข้อมูลครบถ้วน
+        sessionData[currentSessionId].propertySearch.isComplete = true;
 
-    } else if (query.includes("ค้นหาอสังหาริมทรัพย์") || detectedIntent === 'search_property') {
+        // เพิ่มโค้ดนี้เพื่อให้ยิง API ทันทีเมื่อข้อมูลครบถ้วน
+        try {
+          console.log("ข้อมูลการค้นหาครบถ้วนแล้ว กำลังค้นหาอสังหาริมทรัพย์...");
+
+          // เรียกฟังก์ชันค้นหาอสังหาริมทรัพย์
+          searchPropertiesAndSendResponse(currentSessionId);
+        } catch (error) {
+          console.error("เกิดข้อผิดพลาดในการค้นหาอสังหาริมทรัพย์:", error);
+        }
+      } else if (query.includes("ค้นหาอสังหาริมทรัพย์") || detectedIntent === 'search_property') {
       // ถ้าผู้ใช้สั่งค้นหา ให้เรียก API และแสดงผลลัพธ์
       try {
         console.log("Searching for properties with current data:", sessionData[currentSessionId].propertySearch);
@@ -1322,6 +1332,228 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server กำลังทำงานที่พอร์ต ${PORT}`);
 });
+async function searchPropertiesAndSendResponse(sessionId) {
+  if (!sessionId || !sessionData[sessionId]) {
+    console.error("ไม่พบข้อมูล session สำหรับ sessionId:", sessionId);
+    return;
+  }
+
+  try {
+    // ดึงข้อมูลการค้นหาจาก session
+    const searchData = sessionData[sessionId].propertySearch;
+
+    // แปลงข้อมูลเป็นพารามิเตอร์สำหรับ API
+    let searchParams = {};
+
+    // แปลงข้อมูลการค้นหาเป็นพารามิเตอร์
+    if (searchData.buildingType) searchParams.province = searchData.buildingType;
+    if (searchData.zoneId) searchParams.facilities = searchData.zoneId;
+    if (searchData.price) searchParams.price = searchData.price;
+    if (searchData.transactionType) searchParams.transaction_type = searchData.transactionType;
+    if (searchData.location) searchParams.location = searchData.location;
+    if (searchData.propertyType) {
+      const propertyTypeCode = mapPropertyType(searchData.propertyType);
+      if (propertyTypeCode) searchParams.property_type = propertyTypeCode;
+    }
+
+    console.log("กำลังค้นหาด้วยพารามิเตอร์:", searchParams);
+
+    // เรียกใช้ API เพื่อค้นหาอสังหาริมทรัพย์
+    // ในที่นี้เราใช้ axios แต่สามารถใช้ fetch หรือวิธีอื่นได้
+    const apiUrl = 'https://ownwebdev1.livinginsider.com/api/v1/test_order';
+
+    // สร้าง URL params
+    const params = new URLSearchParams();
+    Object.keys(searchParams).forEach(key => {
+      if (searchParams[key]) {
+        params.append(key, searchParams[key]);
+      }
+    });
+
+    // เรียกใช้ API
+    const fullUrl = `${apiUrl}?${params.toString()}`;
+    console.log("กำลังเรียกใช้ API ที่:", fullUrl);
+
+    const response = await axios.get(fullUrl, {
+      timeout: 10000,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      }
+    });
+
+    console.log("ได้รับข้อมูลจาก API:", response.data);
+
+    // ตรวจสอบว่ามีข้อมูลหรือไม่
+    if (response.data && response.data.data && response.data.data.length > 0) {
+      // แปลงข้อมูลให้เหมาะกับการแสดงผล
+      const properties = response.data.data.map(item => ({
+        id: item.web_id ? item.web_id.toString() : '',
+        imageUrl: item.photo || 'assets/images/property-placeholder.jpg',
+        title: item.name || 'ไม่ระบุชื่อ',
+        location: item.zone || 'ไม่ระบุที่ตั้ง',
+        price: item.price ? formatPrice(item.price) : '-',
+        tag: item.tag || 'ขาย',
+        link: item.link || '#'
+      }));
+
+      // สร้าง payload สำหรับแสดงผล
+      const searchResultPayload = {
+        richContent: [[
+          {
+            type: "info",
+            title: "ผลการค้นหาอสังหาริมทรัพย์",
+            subtitle: `พบทั้งหมด ${response.data.count || properties.length} รายการ`
+          }
+        ]]
+      };
+
+      // เพิ่มข้อมูลอสังหาริมทรัพย์แต่ละรายการ
+      properties.forEach(property => {
+        // สร้าง custom card layout
+        searchResultPayload.richContent[0].push({
+          type: "custom_card",
+          property_data: property
+        });
+      });
+
+      // ส่งข้อมูลผ่าน Socket.IO
+      const searchResultMessage = {
+        sender: 'bot',
+        intent: 'search_results',
+        timestamp: Date.now(),
+        room: sessionId,
+        payload: searchResultPayload
+      };
+
+      // ส่งข้อมูลไปยังห้องแชท
+      io.to(sessionId).emit('new_message', searchResultMessage);
+
+      // บันทึกข้อความในประวัติการสนทนา
+      if (conversations[sessionId]) {
+        conversations[sessionId].messages.push({
+          sender: 'bot',
+          intent: 'search_results',
+          timestamp: Date.now(),
+          payload: searchResultPayload
+        });
+      }
+
+      // ส่งข้อมูลดิบไปยังไคลเอนต์
+      io.to(sessionId).emit('property_search_results', {
+        success: true,
+        data: {
+          data: properties,
+          count: response.data.count || properties.length,
+          more: response.data.more || null
+        }
+      });
+
+      console.log("ส่งผลการค้นหาสำเร็จ");
+    } else {
+      // กรณีไม่พบข้อมูล
+      const noResultsPayload = {
+        richContent: [[
+          {
+            type: "info",
+            title: "ผลการค้นหาอสังหาริมทรัพย์",
+            subtitle: "ไม่พบข้อมูลที่ตรงกับการค้นหาของคุณ"
+          },
+          {
+            type: "chips",
+            options: [
+              {
+                text: "ค้นหาใหม่"
+              },
+              {
+                text: "ปรับเงื่อนไขการค้นหา"
+              }
+            ]
+          }
+        ]]
+      };
+
+      const noResultsMessage = {
+        sender: 'bot',
+        intent: 'search_results',
+        timestamp: Date.now(),
+        room: sessionId,
+        payload: noResultsPayload
+      };
+
+      // ส่งข้อมูลไปยังห้องแชท
+      io.to(sessionId).emit('new_message', noResultsMessage);
+
+      // บันทึกข้อความในประวัติการสนทนา
+      if (conversations[sessionId]) {
+        conversations[sessionId].messages.push({
+          sender: 'bot',
+          intent: 'search_results',
+          timestamp: Date.now(),
+          payload: noResultsPayload
+        });
+      }
+
+      // ส่งข้อมูลดิบไปยังไคลเอนต์
+      io.to(sessionId).emit('property_search_results', {
+        success: false,
+        message: 'ไม่พบข้อมูลที่ตรงกับการค้นหา'
+      });
+
+      console.log("ไม่พบข้อมูลที่ตรงกับการค้นหา");
+    }
+  } catch (error) {
+      console.error("เกิดข้อผิดพลาดในการค้นหาอสังหาริมทรัพย์:", error);
+
+      console.log("ใช้ข้อมูลตัวอย่างแทน");
+      const mockData = getMockPropertyData();
+
+      // สร้าง payload สำหรับแสดงผล
+      const searchResultPayload = {
+        richContent: [[
+          {
+            type: "info",
+            title: "ผลการค้นหาอสังหาริมทรัพย์ (ข้อมูลตัวอย่าง)",
+            subtitle: `พบทั้งหมด ${mockData.data.count} รายการ`
+          }
+        ]]
+      };
+
+      // เพิ่มข้อมูลอสังหาริมทรัพย์แต่ละรายการ
+      mockData.data.data.forEach(property => {
+        // สร้าง custom card layout
+        searchResultPayload.richContent[0].push({
+          type: "custom_card",
+          property_data: property
+        });
+      });
+
+      // ส่งข้อมูลผ่าน Socket.IO
+      const searchResultMessage = {
+        sender: 'bot',
+        intent: 'search_results',
+        timestamp: Date.now(),
+        room: sessionId,
+        payload: searchResultPayload
+      };
+
+      // ส่งข้อมูลไปยังห้องแชท
+      io.to(sessionId).emit('new_message', searchResultMessage);
+
+      // บันทึกข้อความในประวัติการสนทนา
+      if (conversations[sessionId]) {
+        conversations[sessionId].messages.push({
+          sender: 'bot',
+          intent: 'search_results',
+          timestamp: Date.now(),
+          payload: searchResultPayload
+        });
+      }
+
+      // ส่งข้อมูลดิบไปยังไคลเอนต์
+      io.to(sessionId).emit('property_search_results', mockData);
+    }
+}
 
 // ฟังก์ชันแปลงประเภทอสังหาริมทรัพย์เป็น post_type
 function mapPropertyType(propertyType) {
@@ -1368,4 +1600,63 @@ function formatPrice(price) {
   if (isNaN(numPrice)) return price;
 
   return numPrice.toLocaleString();
+}
+function getMockPropertyData() {
+  return {
+    success: true,
+    data: {
+      data: [
+        {
+          id: '12345',
+          imageUrl: 'https://via.placeholder.com/300x200',
+          title: 'คอนโดใจกลางเมือง',
+          location: 'สุขุมวิท',
+          price: '3,500,000',
+          tag: 'ขาย',
+          link: '#'
+        },
+        {
+          id: '67890',
+          imageUrl: 'https://via.placeholder.com/300x200',
+          title: 'บ้านเดี่ยว 3 ห้องนอน',
+          location: 'รังสิต',
+          price: '5,200,000',
+          tag: 'ขาย',
+          link: '#'
+        },
+        {
+          id: '24680',
+          imageUrl: 'https://via.placeholder.com/300x200',
+          title: 'ทาวน์โฮมใหม่',
+          location: 'บางนา',
+          price: '12,000',
+          tag: 'เช่า',
+          link: '#'
+        },
+        {
+          id: '13579',
+          imageUrl: 'https://via.placeholder.com/300x200',
+          title: 'คอนโดวิวสวน',
+          location: 'ลาดพร้าว',
+          price: '15,000',
+          tag: 'เช่า',
+          link: '#'
+        },
+        {
+          id: '86420',
+          imageUrl: 'https://via.placeholder.com/300x200',
+          title: 'ที่ดินเปล่า 100 ตร.วา',
+          location: 'ปทุมธานี',
+          price: '2,500,000',
+          tag: 'ขาย',
+          link: '#'
+        }
+      ],
+      count: 5,
+      more: {
+        link: '#',
+        txt: 'ดูอสังหาริมทรัพย์เพิ่มเติม'
+      }
+    }
+  };
 }

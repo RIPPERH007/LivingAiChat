@@ -691,26 +691,26 @@ function processRichContent(payload) {
 function renderPropertyCard(property) {
   // กำหนดประเภท tag (เช่า หรือ ขาย)
   const tagType = property.tag && property.tag.toLowerCase().includes('เช่า') ? 'เช่า' : 'ขาย';
-  const tagColor = tagType === 'เช่า' ? 'bg-blue-500' : 'bg-orange-500';
+  const tagClass = tagType === 'เช่า' ? 'rent-tag' : 'buy-tag';
 
-  // กำหนดสไตล์ตามรูปแบบที่แนบมา
+  // กำหนดสไตล์ตามรูปแบบที่ต้องการ
   return `
-    <div class="property-li-card" data-property-id="${property.id}">
+    <div class="property-li-card" data-property-id="${property.id || ''}" data-text="ขอดูรายละเอียดของ ${property.title || 'อสังหาริมทรัพย์'} เพิ่มเติม">
       <div class="property-li-image">
-        <img src="${property.imageUrl}" alt="${property.title}">
-        <div class="property-li-tag">${property.tag}</div>
+        <img src="${property.imageUrl || 'assets/images/property-placeholder.jpg'}"
+             alt="${property.title || 'อสังหาริมทรัพย์'}">
+        <div class="property-li-tag ${tagClass}">${property.tag || 'ขาย'}</div>
       </div>
       <div class="property-li-info">
-        <div class="property-li-title">${tagType} ${property.title}</div>
+        <div class="property-li-title">${property.tag || 'ขาย'} ${property.title || 'ไม่มีชื่อ'}</div>
         <div class="property-li-location">
-          <i class="fas fa-map-marker-alt"></i> ${property.location}
+          <i class="fas fa-map-marker-alt"></i> ${property.location || 'ไม่ระบุที่ตั้ง'}
         </div>
-        <div class="property-li-price">฿${property.price}</div>
+        <div class="property-li-price">฿${property.price || '-'}</div>
       </div>
     </div>
   `;
 }
-
     // เพิ่ม Event Listeners สำหรับองค์ประกอบแบบโต้ตอบ
 function addInteractiveListeners(richContentElement) {
     console.log('Setting up interactive elements');

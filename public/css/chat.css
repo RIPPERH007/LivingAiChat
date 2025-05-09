@@ -716,8 +716,6 @@ body {
   color: #2bbd7e;
   margin-top: 5px;
 }
-
-/* การ์ดสไตล์ Living Insider (ตามรูปที่ 2) */
 .property-li-card {
   background-color: white;
   border-radius: 8px;
@@ -727,6 +725,13 @@ body {
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   display: flex;
   flex-direction: column;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.property-li-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
 }
 
 .property-li-image {
@@ -746,11 +751,19 @@ body {
   position: absolute;
   top: 10px;
   right: 10px;
-  background-color: rgba(52, 58, 64, 0.8);
-  color: white;
-  padding: 3px 8px;
-  border-radius: 4px;
+  padding: 4px 12px;
+  border-radius: 20px;
   font-size: 12px;
+  font-weight: 500;
+  color: white;
+}
+
+.rent-tag {
+  background-color: #2196F3;
+}
+
+.buy-tag {
+  background-color: #FF9800;
 }
 
 .property-li-info {
@@ -761,21 +774,25 @@ body {
 .property-li-title {
   font-size: 13px;
   font-weight: 500;
-  color: #666;
-  margin-bottom: 2px;
+  color: #333;
+  margin-bottom: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .property-li-location {
   display: flex;
   align-items: center;
   font-size: 12px;
-  color: #999;
+  color: #666;
   margin-bottom: 5px;
 }
 
 .property-li-location i {
   font-size: 12px;
   margin-right: 4px;
+  color: #666;
 }
 
 .property-li-price {
@@ -784,28 +801,12 @@ body {
   color: #333;
 }
 
-/* เพิ่มสไตล์สำหรับรายการผลการค้นหา */
-.search-results-container {
-  padding: 10px 0;
-}
-
-.search-results-title {
-  font-size: 14px;
-  font-weight: 500;
-  margin-bottom: 10px;
-  color: #333;
-}
-
-.search-results-count {
-  font-size: 12px;
-  color: #666;
-  margin-bottom: 15px;
-}
-
+/* การแสดงผลแบบ grid สำหรับการ์ด */
 .property-cards-container {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 15px;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 @media (min-width: 420px) {
@@ -813,6 +814,7 @@ body {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+*/
 
 /* Animation */
 @keyframes pulse {
