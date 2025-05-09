@@ -555,7 +555,14 @@ app.post('/api/dialogflow', async (req, res) => {
     io.to(currentSessionId).emit('new_message', userMessage);
 
     // เพิ่มบรรทัดนี้เพื่อส่งข้อความบอทไปยังผู้ใช้เสมอ
+    if(botMessageText === "ไม่เข้าใจคำถาม กรุณาลองใหม่อีกครั้ง"){
+          console.log('Using 111:', botMessageText);
+
+    }else{
+          console.log('Using 3123', botMessageText);
+
     io.to(currentSessionId).emit('new_message', botMessage);
+    }
 
     // ตรวจสอบ intent และเก็บข้อมูลตามขั้นตอน
     let shouldMoveToNextStep = false;
@@ -619,48 +626,9 @@ app.post('/api/dialogflow', async (req, res) => {
         console.log("Updated step3 with raw query:", query);
         shouldMoveToNextStep = true;
       }
-    } else if (detectedIntent === 'step4') {
-      // เก็บข้อมูลประเภทธุรกรรม
-      const parameters = result.parameters.fields;
-      if (parameters && parameters.transaction_type) {
-        sessionData[currentSessionId].propertySearch.transactionType = parameters.transaction_type.stringValue || null;
-        console.log("Updated step4 - transactionType:", sessionData[currentSessionId].propertySearch.transactionType);
-        shouldMoveToNextStep = true;
-      } else {
-        // ถ้าไม่มีพารามิเตอร์ transaction_type แต่ได้รับ intent step4 ให้เก็บข้อความผู้ใช้
-        sessionData[currentSessionId].propertySearch.transactionType = query;
-        console.log("Updated step4 with raw query:", query);
-        shouldMoveToNextStep = true;
-      }
-    } else if (detectedIntent === 'step5') {
-      // เก็บข้อมูลทำเลที่ตั้ง
-      const parameters = result.parameters.fields;
-      if (parameters && parameters.location) {
-        sessionData[currentSessionId].propertySearch.location = parameters.location.stringValue || null;
-        console.log("Updated step5 - location:", sessionData[currentSessionId].propertySearch.location);
-        shouldMoveToNextStep = true;
-      } else {
-        // ถ้าไม่มีพารามิเตอร์ location แต่ได้รับ intent step5 ให้เก็บข้อความผู้ใช้
-        sessionData[currentSessionId].propertySearch.location = query;
-        console.log("Updated step5 with raw query:", query);
-        shouldMoveToNextStep = true;
-      }
-    } else if (detectedIntent === 'step6') {
-      // เก็บข้อมูลประเภทอสังหาริมทรัพย์
-      const parameters = result.parameters.fields;
-      if (parameters && parameters.property_type) {
-        sessionData[currentSessionId].propertySearch.propertyType = parameters.property_type.stringValue || null;
-        console.log("Updated step6 - propertyType:", sessionData[currentSessionId].propertySearch.propertyType);
-        shouldMoveToNextStep = true;
-      } else {
-        // ถ้าไม่มีพารามิเตอร์ property_type แต่ได้รับ intent step6 ให้เก็บข้อความผู้ใช้
-        sessionData[currentSessionId].propertySearch.propertyType = query;
-        console.log("Updated step6 with raw query:", query);
-        shouldMoveToNextStep = true;
-      }
 
-      // ตั้งค่าว่าเสร็จสมบูรณ์เมื่อถึง step 6
       sessionData[currentSessionId].propertySearch.isComplete = true;
+
     } else if (query.includes("ค้นหาอสังหาริมทรัพย์") || detectedIntent === 'search_property') {
       // ถ้าผู้ใช้สั่งค้นหา ให้เรียก API และแสดงผลลัพธ์
       try {
@@ -794,8 +762,6 @@ app.post('/api/dialogflow', async (req, res) => {
       }
     }
 
-    // ถ้าไม่มี payload แต่มีข้อมูลพอที่จะค้นหาได้แล้ว (อย่างน้อย 3 steps) ให้สร้าง payload ใหม่แล้วใส่ chips ค้นหา
-    // แสดง chips ตั้งแต่ step 4 เป็นต้นไป
     if (!payloadSent && sessionData[currentSessionId].currentStep && sessionData[currentSessionId].currentStep >= 4) {
       const completedSteps = Object.values(sessionData[currentSessionId].propertySearch)
         .filter(value => value !== null && value !== undefined && value !== false && value !== "").length;
