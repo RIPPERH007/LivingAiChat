@@ -40,11 +40,11 @@ exports.handleWebhook = async (req, res) => {
         searchParams.price = parsePrice(queryResult.parameters.fields.price.stringValue);
       }
 
-      // โซน/ทำเล (location/province)
-      if (queryResult.parameters.fields.location || queryResult.parameters.fields.province) {
+      // โซน/ทำเล (location/building_type)
+      if (queryResult.parameters.fields.location || queryResult.parameters.fields.buildingType) {
         searchParams.zone_id = mapLocationToZoneId(
           queryResult.parameters.fields.location?.stringValue ||
-          queryResult.parameters.fields.province?.stringValue
+          queryResult.parameters.fields.buildingType?.stringValue
         );
       }
 
@@ -69,8 +69,8 @@ exports.handleWebhook = async (req, res) => {
         searchParams.price = queryResult.parameters.price;
       }
 
-      if (queryResult.parameters.location || queryResult.parameters.province) {
-        searchParams.zone_id = mapLocationToZoneId(queryResult.parameters.location || queryResult.parameters.province);
+      if (queryResult.parameters.location || queryResult.parameters.buildingType) {
+        searchParams.zone_id = mapLocationToZoneId(queryResult.parameters.location || queryResult.parameters.buildingType);
       }
 
       if (queryResult.parameters.project) {

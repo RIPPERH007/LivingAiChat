@@ -220,8 +220,8 @@ io.on('connection', (socket) => {
       const propertySearch = sessionData[sessionId].propertySearch;
 
       // แปลงข้อมูลเป็นพารามิเตอร์ API
-      if (propertySearch.province) {
-        searchParams.province = propertySearch.province;
+      if (propertySearch.buildingType) {
+        searchParams.buildingType = propertySearch.buildingType;
       }
 
       if (propertySearch.propertyType) {
@@ -240,8 +240,8 @@ io.on('connection', (socket) => {
         searchParams.zone = propertySearch.location;
       }
 
-      if (propertySearch.facilities) {
-        searchParams.facilities = propertySearch.facilities;
+      if (propertySearch.zoneId) {
+        searchParams.zoneId = propertySearch.zoneId;
       }
     }
 
@@ -431,8 +431,8 @@ app.post('/api/dialogflow', async (req, res) => {
         },
         currentStep: 1, // เพิ่มตัวแปรเก็บ step ปัจจุบัน
         propertySearch: {
-          province: null,         // จังหวัด (step 1)
-          facilities: null,       // สิ่งอำนวยความสะดวก (step 2)
+          buildingType: null,         // เช่า, ซื้อ, ขาย, เซ้ง (step 1)
+          zoneId: null,       // ทำเลที่ตั้ง (step 2)
           price: null,            // ราคา (step 3)
           transactionType: null,  // เช่า, ซื้อ, ขาย, เซ้ง (step 4)
           location: null,         // ทำเลที่ตั้ง (step 5)
@@ -590,26 +590,26 @@ app.post('/api/dialogflow', async (req, res) => {
     } else if (detectedIntent === 'step1') {
       // เก็บข้อมูลจังหวัด
       const parameters = result.parameters.fields;
-      if (parameters && parameters.province) {
-        sessionData[currentSessionId].propertySearch.province = parameters.province.stringValue || null;
-        console.log("Updated step1 - province:", sessionData[currentSessionId].propertySearch.province);
+      if (parameters && parameters.buildingType) {
+        sessionData[currentSessionId].propertySearch.buildingType = parameters.buildingType.stringValue || null;
+        console.log("Updated step1 - buildingType:", sessionData[currentSessionId].propertySearch.buildingType);
         shouldMoveToNextStep = true;
       } else {
-        // ถ้าไม่มีพารามิเตอร์ province แต่ได้รับ intent step1 ให้เก็บข้อความผู้ใช้
-        sessionData[currentSessionId].propertySearch.province = query;
+        // ถ้าไม่มีพารามิเตอร์ buildingType แต่ได้รับ intent step1 ให้เก็บข้อความผู้ใช้
+        sessionData[currentSessionId].propertySearch.buildingType = query;
         console.log("Updated step1 with raw query:", query);
         shouldMoveToNextStep = true;
       }
     } else if (detectedIntent === 'step2') {
       // เก็บข้อมูลสิ่งอำนวยความสะดวก
       const parameters = result.parameters.fields;
-      if (parameters && parameters.facilities) {
-        sessionData[currentSessionId].propertySearch.facilities = parameters.facilities.stringValue || null;
-        console.log("Updated step2 - facilities:", sessionData[currentSessionId].propertySearch.facilities);
+      if (parameters && parameters.zoneId) {
+        sessionData[currentSessionId].propertySearch.zoneId = parameters.zoneId.stringValue || null;
+        console.log("Updated step2 - zoneId:", sessionData[currentSessionId].propertySearch.zoneId);
         shouldMoveToNextStep = true;
       } else {
-        // ถ้าไม่มีพารามิเตอร์ facilities แต่ได้รับ intent step2 ให้เก็บข้อความผู้ใช้
-        sessionData[currentSessionId].propertySearch.facilities = query;
+        // ถ้าไม่มีพารามิเตอร์ zoneId แต่ได้รับ intent step2 ให้เก็บข้อความผู้ใช้
+        sessionData[currentSessionId].propertySearch.zoneId = query;
         console.log("Updated step2 with raw query:", query);
         shouldMoveToNextStep = true;
       }
@@ -715,8 +715,8 @@ app.post('/api/dialogflow', async (req, res) => {
     if (sessionData[currentSessionId].propertySearch) {
       const search = sessionData[currentSessionId].propertySearch;
       let completedSteps = 0;
-      if (search.province) completedSteps++;
-      if (search.facilities) completedSteps++;
+      if (search.buildingType) completedSteps++;
+      if (search.zoneId) completedSteps++;
       if (search.price) completedSteps++;
       if (search.transactionType) completedSteps++;
       if (search.location) completedSteps++;
@@ -1172,8 +1172,8 @@ app.post('/api/property/search', async (req, res) => {
 
     if (searchData) {
       // แปลงข้อมูลเป็นพารามิเตอร์ API
-      if (searchData.province) {
-        searchParams.province = searchData.province;
+      if (searchData.buildingType) {
+        searchParams.buildingType = searchData.buildingType;
       }
 
       if (searchData.propertyType) {
@@ -1192,8 +1192,8 @@ app.post('/api/property/search', async (req, res) => {
         searchParams.zone = searchData.location;
       }
 
-      if (searchData.facilities) {
-        searchParams.facilities = searchData.facilities;
+      if (searchData.zoneId) {
+        searchParams.zoneId = searchData.zoneId;
       }
     }
 
@@ -1267,8 +1267,8 @@ app.patch('/api/property/search/:sessionId', (req, res) => {
   // อัปเดตข้อมูลการค้นหา
   if (!sessionData[sessionId].propertySearch) {
     sessionData[sessionId].propertySearch = {
-      province: null,
-      facilities: null,
+      buildingType: null,
+      zoneId: null,
       price: null,
       transactionType: null,
       location: null,

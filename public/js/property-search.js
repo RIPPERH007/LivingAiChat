@@ -11,8 +11,8 @@
     closePropertySearchBtn: document.getElementById('closePropertySearchBtn'),
 
     // Search Form Inputs
-    provinceInput: document.getElementById('province-input'),
-    facilitiesInput: document.getElementById('facilities-input'),
+    buildingTypeInput: document.getElementById('buildingType-input'),
+    zoneIdInput: document.getElementById('zoneId-input'),
     priceInput: document.getElementById('price-input'),
     transactionTypeSelect: document.getElementById('transaction-type-select'),
     locationInput: document.getElementById('location-input'),
@@ -32,8 +32,8 @@
   const state = {
     currentSessionId: null,
     searchData: {
-      province: null,
-      facilities: null,
+      buildingType: null,
+      zoneId: null,
       price: null,
       transactionType: null,
       location: null,
@@ -151,8 +151,8 @@
     const data = state.searchData;
 
     // อัปเดตค่าในฟอร์ม
-    if (elements.provinceInput) elements.provinceInput.value = data.province || '';
-    if (elements.facilitiesInput) elements.facilitiesInput.value = data.facilities || '';
+    if (elements.buildingTypeInput) elements.buildingTypeInput.value = data.buildingType || '';
+    if (elements.zoneIdInput) elements.zoneIdInput.value = data.zoneId || '';
     if (elements.priceInput) elements.priceInput.value = data.price || '';
     if (elements.transactionTypeSelect) elements.transactionTypeSelect.value = data.transactionType || '';
     if (elements.locationInput) elements.locationInput.value = data.location || '';
@@ -162,8 +162,8 @@
   // Get Search Form Data
   function getSearchFormData() {
     return {
-      province: elements.provinceInput ? elements.provinceInput.value.trim() : null,
-      facilities: elements.facilitiesInput ? elements.facilitiesInput.value.trim() : null,
+      buildingType: elements.buildingTypeInput ? elements.buildingTypeInput.value.trim() : null,
+      zoneId: elements.zoneIdInput ? elements.zoneIdInput.value.trim() : null,
       price: elements.priceInput ? elements.priceInput.value.trim() : null,
       transactionType: elements.transactionTypeSelect ? elements.transactionTypeSelect.value : null,
       location: elements.locationInput ? elements.locationInput.value.trim() : null,
@@ -174,7 +174,7 @@
   // Check Search Complete
   function checkSearchComplete() {
     const data = state.searchData;
-    const isComplete = data.province && data.facilities && data.price &&
+    const isComplete = data.buildingType && data.zoneId && data.price &&
                       data.transactionType && data.location && data.propertyType;
 
     state.searchData.isComplete = isComplete;
