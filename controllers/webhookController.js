@@ -70,11 +70,11 @@ exports.handleWebhook = async (req, res) => {
       }
 
       if (queryResult.parameters.location || queryResult.parameters.buildingType) {
-        searchParams.zone_id = mapLocationToZoneId(queryResult.parameters.location || queryResult.parameters.buildingType);
+        searchParams.zone_id = queryResult.parameters.buildingType;
       }
 
       if (queryResult.parameters.project) {
-        searchParams.project_id = mapProjectToId(queryResult.parameters.project);
+        searchParams.project_id = queryResult.parameters.project;
       }
     }
   }

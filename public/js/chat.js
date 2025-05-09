@@ -688,23 +688,28 @@ function processRichContent(payload) {
     return richContentHTML;
 }
 
-    function renderPropertyCard(property) {
-      return `
-        <div class="property-li-card" data-property-id="${property.id}">
-          <div class="property-li-image">
-            <img src="${property.imageUrl}" alt="${property.title}">
-            <div class="property-li-tag">${property.tag}</div>
-          </div>
-          <div class="property-li-info">
-            <div class="property-li-title">${property.tag} ${property.title}</div>
-            <div class="property-li-location">
-              <i class="fas fa-map-marker-alt"></i> ${property.location}
-            </div>
-            <div class="property-li-price">฿${property.price}</div>
-          </div>
+function renderPropertyCard(property) {
+  // กำหนดประเภท tag (เช่า หรือ ขาย)
+  const tagType = property.tag && property.tag.toLowerCase().includes('เช่า') ? 'เช่า' : 'ขาย';
+  const tagColor = tagType === 'เช่า' ? 'bg-blue-500' : 'bg-orange-500';
+
+  // กำหนดสไตล์ตามรูปแบบที่แนบมา
+  return `
+    <div class="property-li-card" data-property-id="${property.id}">
+      <div class="property-li-image">
+        <img src="${property.imageUrl}" alt="${property.title}">
+        <div class="property-li-tag">${property.tag}</div>
+      </div>
+      <div class="property-li-info">
+        <div class="property-li-title">${tagType} ${property.title}</div>
+        <div class="property-li-location">
+          <i class="fas fa-map-marker-alt"></i> ${property.location}
         </div>
-      `;
-    }
+        <div class="property-li-price">฿${property.price}</div>
+      </div>
+    </div>
+  `;
+}
 
     // เพิ่ม Event Listeners สำหรับองค์ประกอบแบบโต้ตอบ
 function addInteractiveListeners(richContentElement) {
@@ -712,46 +717,6 @@ function addInteractiveListeners(richContentElement) {
 
     // ปุ่มและ chips
     const buttons = richContentElement.querySelectorAll('.chat-btn, .chip');
-    buttons.forEach(button => {
-        button.addEventListener('click', function() {
-            const clickText = this.dataset.text;
-            if (!clickText) return;
-
-            console.log('Button/chip clicked:', clickText);
-
-            // จัดการกรณีปุ่มค้นหาอสังหาริมทรัพย์
-            if (clickText === "ค้นหาอสังหาริมทรัพย์") {
-                const messageId = Date.now();
-                addMessage('user', clickText, '', messageId);
-
-                // เรียกใช้ Socket.IO เพื่อค้นหาอสังหาริมทรัพย์โดยตรง
-                if (chatState.socket && chatState.socket.connected) {
-                    chatState.socket.emit('request_property_search', {
-                        sessionId: chatState.sessionId,
-                        searchData: null, // ใช้ข้อมูลที่เก็บไว้ใน session
-                        timestamp: messageId
-                    });
-
-                    // แสดงข้อความกำลังค้นหา
-                    const loadingMessageId = Date.now() + 1;
-                    addMessage('bot', 'กำลังค้นหาอสังหาริมทรัพย์ตามเงื่อนไขของคุณ...', '', loadingMessageId);
-                } else {
-                    // ถ้าไม่มีการเชื่อมต่อ Socket.IO ให้ส่งไปที่ Dialogflow ตามปกติ
-                    sendToDialogflow(clickText, chatState.sessionId, messageId)
-                        .then(handleDialogflowResponse)
-                        .catch(handleDialogflowError);
-                }
-            } else {
-                // กรณีคลิก chip ปกติ
-//                const messageId = Date.now();
-//                addMessage('user', clickText, '', messageId);
-//
-//                sendToDialogflow(clickText, chatState.sessionId, messageId)
-//                    .then(handleDialogflowResponse)
-//                    .catch(handleDialogflowError);
-            }
-        });
-    });
 
     // List Items
     const listItems = richContentElement.querySelectorAll('.list-item');

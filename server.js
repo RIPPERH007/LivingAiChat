@@ -208,7 +208,7 @@ io.on('connection', (socket) => {
   });
 
   // รับการร้องขอค้นหาอสังหาริมทรัพย์
-    socket.on('request_property_search', async (data) => {
+socket.on('request_property_search', async (data) => {
   try {
     console.log('Property search requested:', data);
     const { sessionId, searchData } = data;
@@ -264,7 +264,7 @@ io.on('connection', (socket) => {
     });
 
     // ทำการเรียก API
-    const response = await axios.get(`${apiUrl}?${params.toString()}`);
+    const response = await axios.get(`${apiUrl}}`);
     const propertyData = response.data;
 
     // ถ้ามีข้อมูล ให้ส่งกลับไปแสดงผล
@@ -280,36 +280,48 @@ io.on('connection', (socket) => {
         link: item.link || '#'
       }));
 
-      // สร้าง payload สำหรับการแสดงผล
-      const searchResultPayload = {
-        richContent: [[
-          {
-            type: "info",
-            title: "ผลการค้นหาอสังหาริมทรัพย์",
-            subtitle: `พบทั้งหมด ${propertyData.count || properties.length} รายการ`
-          }
-        ]]
-      };
+      // สร้าง rich content สำหรับแสดงผลในรูปแบบแถว 2 แถว
+      const richContent = [];
+      let currentRow = [];
 
-      // เพิ่มการ์ดอสังหาริมทรัพย์ในผลลัพธ์
+      // สร้างหัวข้อผลการค้นหา
+      richContent.push([
+        {
+          type: "info",
+          title: "ผลการค้นหาอสังหาริมทรัพย์",
+          subtitle: `พบทั้งหมด ${propertyData.count || properties.length} รายการ`
+        }
+      ]);
+
+      // สร้างแถวของการ์ดอสังหาริมทรัพย์
+      const propertiesRow = [];
+
+      // วนลูปเพิ่มแต่ละรายการ
       properties.forEach(property => {
-        searchResultPayload.richContent[0].push({
+        // สร้าง custom card layout ตามรูปแบบที่ต้องการ
+        propertiesRow.push({
           type: "custom_card",
           property_data: property
         });
       });
 
-      // เพิ่มจำนวนดูเพิ่มเติม
+      // เพิ่มแถวของอสังหาริมทรัพย์ทั้งหมด
+      richContent.push(propertiesRow);
+
+      // เพิ่มปุ่มดูเพิ่มเติม (ถ้ามี)
       if (propertyData.more) {
-        searchResultPayload.richContent[0].push({
-          type: "button",
-          options: [
-            {
-              text: "ดูเพิ่มเติม",
-              link: propertyData.more.link || "#"
-            }
-          ]
-        });
+        richContent.push([
+          {
+            type: "button",
+            options: [
+              {
+                text: "ดูเพิ่มเติม",
+                link: propertyData.more.link || "#",
+                color: "primary"
+              }
+            ]
+          }
+        ]);
       }
 
       // สร้างข้อความและส่งผ่าน Socket.IO
@@ -318,7 +330,9 @@ io.on('connection', (socket) => {
         intent: 'search_results',
         timestamp: Date.now(),
         room: sessionId,
-        payload: searchResultPayload
+        payload: {
+          richContent: richContent
+        }
       };
 
       console.log('Sending search results to room:', sessionId);
@@ -340,7 +354,9 @@ io.on('connection', (socket) => {
           sender: 'bot',
           intent: 'search_results',
           timestamp: Date.now(),
-          payload: searchResultPayload
+          payload: {
+            richContent: richContent
+          }
         });
       }
     } else {
@@ -389,7 +405,6 @@ io.on('connection', (socket) => {
     });
   }
 });
-
   // ตัวจัดการเมื่อตัดการเชื่อมต่อ
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
@@ -590,42 +605,24 @@ app.post('/api/dialogflow', async (req, res) => {
     } else if (detectedIntent === 'step1') {
       // เก็บข้อมูลจังหวัด
       const parameters = result.parameters.fields;
-      if (parameters && parameters.buildingType) {
-        sessionData[currentSessionId].propertySearch.buildingType = parameters.buildingType.stringValue || null;
-        console.log("Updated step1 - buildingType:", sessionData[currentSessionId].propertySearch.buildingType);
-        shouldMoveToNextStep = true;
-      } else {
         // ถ้าไม่มีพารามิเตอร์ buildingType แต่ได้รับ intent step1 ให้เก็บข้อความผู้ใช้
         sessionData[currentSessionId].propertySearch.buildingType = query;
         console.log("Updated step1 with raw query:", query);
         shouldMoveToNextStep = true;
-      }
     } else if (detectedIntent === 'step2') {
       // เก็บข้อมูลสิ่งอำนวยความสะดวก
       const parameters = result.parameters.fields;
-      if (parameters && parameters.zoneId) {
-        sessionData[currentSessionId].propertySearch.zoneId = parameters.zoneId.stringValue || null;
-        console.log("Updated step2 - zoneId:", sessionData[currentSessionId].propertySearch.zoneId);
-        shouldMoveToNextStep = true;
-      } else {
         // ถ้าไม่มีพารามิเตอร์ zoneId แต่ได้รับ intent step2 ให้เก็บข้อความผู้ใช้
         sessionData[currentSessionId].propertySearch.zoneId = query;
         console.log("Updated step2 with raw query:", query);
         shouldMoveToNextStep = true;
-      }
     } else if (detectedIntent === 'step3') {
       // เก็บข้อมูลราคา
       const parameters = result.parameters.fields;
-      if (parameters && parameters.price) {
-        sessionData[currentSessionId].propertySearch.price = parameters.price.stringValue || null;
-        console.log("Updated step3 - price:", sessionData[currentSessionId].propertySearch.price);
-        shouldMoveToNextStep = true;
-      } else {
         // ถ้าไม่มีพารามิเตอร์ price แต่ได้รับ intent step3 ให้เก็บข้อความผู้ใช้
         sessionData[currentSessionId].propertySearch.price = query;
         console.log("Updated step3 with raw query:", query);
         shouldMoveToNextStep = true;
-      }
 
       sessionData[currentSessionId].propertySearch.isComplete = true;
 
@@ -706,7 +703,7 @@ app.post('/api/dialogflow', async (req, res) => {
     // อัปเดต step ปัจจุบันถ้าจำเป็น
     if (shouldMoveToNextStep && sessionData[currentSessionId].currentStep) {
       const currentStep = sessionData[currentSessionId].currentStep || 1;
-      const nextStep = currentStep < 6 ? currentStep + 1 : 6;
+      const nextStep = currentStep < 3 ? currentStep + 1 : 3;
       sessionData[currentSessionId].currentStep = nextStep;
       console.log(`Moving from step ${currentStep} to step ${nextStep} for ${currentSessionId}`);
     }
@@ -725,7 +722,7 @@ app.post('/api/dialogflow', async (req, res) => {
       console.log(`Completed steps for ${currentSessionId}: ${completedSteps}/6`);
 
       // ถ้าครบ 6 steps หรือมีข้อมูลเพียงพอ (อย่างน้อย 3 steps)
-      if (completedSteps >= 3) {
+      if (completedSteps >= 2) {
         sessionData[currentSessionId].propertySearch.searchReady = true;
       }
     }
@@ -762,47 +759,61 @@ app.post('/api/dialogflow', async (req, res) => {
       }
     }
 
-    if (!payloadSent && sessionData[currentSessionId].currentStep && sessionData[currentSessionId].currentStep >= 4) {
-      const completedSteps = Object.values(sessionData[currentSessionId].propertySearch)
-        .filter(value => value !== null && value !== undefined && value !== false && value !== "").length;
+    if (!payloadSent && sessionData[currentSessionId] && sessionData[currentSessionId].propertySearch) {
+        // ตรวจสอบว่ามีทั้ง zoneId และ price หรือไม่
+      const propertySearch = sessionData[currentSessionId].propertySearch;
+      const hasZoneId = propertySearch.zoneId !== null &&
+                        propertySearch.zoneId !== undefined &&
+                        propertySearch.zoneId !== "";
 
-      const searchChipsPayload = {
-        richContent: [[
-          {
-            type: "info",
-            title: "ข้อมูลการค้นหาของคุณ",
-            subtitle: `มีข้อมูลการค้นหา ${completedSteps} รายการจากทั้งหมด 6 รายการ`
-          },
-          {
-            type: "chips",
-            options: [
-              {
-                text: "ค้นหาอสังหาริมทรัพย์"
-              }
-            ]
-          }
-        ]]
-      };
+      const hasPrice = propertySearch.price !== null &&
+                       propertySearch.price !== undefined &&
+                       propertySearch.price !== "";
 
-      const searchChipsMessage = {
-        sender: 'bot',
-        intent: 'search_property',
-        timestamp: Date.now() + 2,
-        room: currentSessionId,
-        payload: searchChipsPayload
-      };
+      // แสดง search chips เมื่อมีทั้ง zoneId และ price
+      if (hasZoneId && hasPrice) {
+        const completedSteps = Object.values(sessionData[currentSessionId].propertySearch)
+          .filter(value => value !== null && value !== undefined && value !== false && value !== "").length;
 
-      console.log('Sending search chips message via Socket.IO');
-      io.to(currentSessionId).emit('new_message', searchChipsMessage);
+        const searchChipsPayload = {
+          richContent: [[
+            {
+              type: "info",
+              title: "ข้อมูลการค้นหาของคุณ",
+              subtitle: `มีข้อมูลการค้นหา ${completedSteps} รายการจากทั้งหมด 6 รายการ`
+            },
+            {
+              type: "chips",
+              options: [
+                {
+                  text: "ค้นหาอสังหาริมทรัพย์"
+                }
+              ]
+            }
+          ]]
+        };
 
-      // บันทึกข้อความ chips ค้นหาลงในประวัติการสนทนา
-      conversations[currentSessionId].messages.push({
-        sender: 'bot',
-        intent: 'search_property',
-        timestamp: Date.now() + 2,
-        payload: searchChipsPayload
-      });
+        const searchChipsMessage = {
+          sender: 'bot',
+          intent: 'search_property',
+          timestamp: Date.now() + 2,
+          room: currentSessionId,
+          payload: searchChipsPayload
+        };
+
+        console.log('Sending search chips message via Socket.IO');
+        io.to(currentSessionId).emit('new_message', searchChipsMessage);
+
+        // บันทึกข้อความ chips ค้นหาลงในประวัติการสนทนา
+        conversations[currentSessionId].messages.push({
+          sender: 'bot',
+          intent: 'search_property',
+          timestamp: Date.now() + 2,
+          payload: searchChipsPayload
+        });
+      }
     }
+
 
     // สร้าง response กลับไปยัง Live Chat
     const responseData = {
