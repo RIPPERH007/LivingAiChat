@@ -246,7 +246,7 @@ function connectSocket() {
     try {
         // เชื่อมต่อ Socket.IO
         const socketUrl = window.location.hostname === 'localhost' ?
-                          'http://localhost:3000' :
+                          'http://localhost:4000' :
                           window.location.origin;
 
         // ตรวจสอบว่ามีการเชื่อมต่ออยู่แล้วหรือไม่
@@ -452,28 +452,6 @@ function setupAdminStatusButton() {
         }
     }
 }
-// เพิ่ม Event Listener สำหรับปุ่มสถานะแอดมิน
-function setupAdminStatusButton() {
-    if (elements.adminStatusBtn) {
-        elements.adminStatusBtn.addEventListener('click', toggleAdminActiveStatus);
-        // ตั้งค่าเริ่มต้น
-        updateAdminStatusButton();
-    }
-}
-const originalOpenChatSession = openChatSession;
-openChatSession = function(sessionId) {
-    // รีเซ็ตสถานะแอดมินเมื่อเปิดห้องใหม่
-    state.adminActive = false;
-    updateAdminStatusButton();
-
-    // เรียกฟังก์ชันเดิม
-    originalOpenChatSession(sessionId);
-
-    // แสดงแชทพาเนล
-    if (elements.chatPanel) {
-        elements.chatPanel.style.display = 'flex';
-    }
-};
 
     // โหลดรายการการสนทนา
     function loadConversations() {
@@ -895,39 +873,6 @@ openChatSession = function(sessionId) {
         }
     }
 
-    // โหลดประวัติการสนทนา
-    function loadChatHistory(messages) {
-        if (!elements.adminChatMessages || !messages) return;
-
-        // ล้างข้อความเก่า
-        elements.adminChatMessages.innerHTML = '';
-
-        // เพิ่มข้อความใหม่
-        messages.forEach(msg => {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${msg.sender}`;
-            messageDiv.setAttribute('data-message-id', msg.timestamp);
-
-            const msgDate = new Date(msg.timestamp);
-            const timeFormatted = `${('0' + msgDate.getDate()).slice(-2)} ${getMonthAbbr(msgDate.getMonth())} ${('0' + msgDate.getHours()).slice(-2)}:${('0' + msgDate.getMinutes()).slice(-2)}`;
-
-            // แสดงชื่อผู้ส่งถ้าเป็นข้อความจากแอดมิน
-            const senderInfo = msg.sender === 'admin' && msg.adminName ? `<small>${escapeHTML(msg.adminName)}</small>` : '';
-
-            messageDiv.innerHTML = `
-                <div class="message-content">
-                    <p>${escapeHTML(msg.text)}</p>
-                    ${senderInfo}
-                </div>
-                <div class="message-time">${timeFormatted}</div>
-            `;
-
-            elements.adminChatMessages.appendChild(messageDiv);
-        });
-
-        // เลื่อนไปที่ข้อความล่าสุด
-        elements.adminChatMessages.scrollTop = elements.adminChatMessages.scrollHeight;
-    }
 
     // อัปเดตข้อมูล Session
     function updateSessionData(conversation) {

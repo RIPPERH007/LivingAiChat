@@ -980,7 +980,7 @@ app.get('/admin', (req, res) => {
 /**
  * เริ่มต้น server
  */
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
   console.log(`Server กำลังทำงานที่พอร์ต ${PORT}`);
 });

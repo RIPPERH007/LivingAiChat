@@ -69,7 +69,7 @@ function connectSocket() {
     try {
         // เชื่อมต่อ Socket.IO
         const socketUrl = window.location.hostname === 'localhost' ?
-                          'http://localhost:3000' :
+                          'http://localhost:4000' :
                           window.location.origin;
 
         // ตรวจสอบว่ามีการเชื่อมต่ออยู่แล้วหรือไม่
@@ -308,30 +308,7 @@ function updateAdminStatusDisplay(isActive, adminName) {
         const clickText = chipElement.dataset.text;
         if (!clickText) return;
 
-        // กรณีคลิกค้นหาอสังหาริมทรัพย์
-        if (clickText === "ค้นหาอสังหาริมทรัพย์") {
-            // แสดงข้อความผู้ใช้
-            const messageId = Date.now();
-            addMessage('user', clickText, '', messageId);
 
-            // เรียกใช้ Socket.IO เพื่อค้นหาอสังหาริมทรัพย์โดยตรง
-            if (chatState.socket && chatState.socket.connected) {
-                chatState.socket.emit('request_property_search', {
-                    sessionId: chatState.sessionId,
-                    searchData: null, // ใช้ข้อมูลที่เก็บไว้ใน session
-                    timestamp: messageId
-                });
-
-                // แสดงข้อความกำลังค้นหา
-                const loadingMessageId = Date.now() + 1;
-                addMessage('bot', 'กำลังค้นหาอสังหาริมทรัพย์ตามเงื่อนไขของคุณ...', '', loadingMessageId);
-            } else {
-                // ถ้าไม่มีการเชื่อมต่อ Socket.IO ให้ส่งไปที่ Dialogflow ตามปกติ
-                sendToDialogflow(clickText, chatState.sessionId, messageId)
-                    .then(handleDialogflowResponse)
-                    .catch(handleDialogflowError);
-            }
-        } else {
             // กรณีคลิก chip อื่นๆ ที่ไม่ใช่การค้นหา
             const messageId = Date.now();
             addMessage('user', clickText, '', messageId);
@@ -339,7 +316,6 @@ function updateAdminStatusDisplay(isActive, adminName) {
             sendToDialogflow(clickText, chatState.sessionId, messageId)
                 .then(handleDialogflowResponse)
                 .catch(handleDialogflowError);
-        }
     }
 
 
@@ -651,66 +627,80 @@ function addSystemMessage(text) {
      * @returns {string} - HTML สำหรับแสดง Rich Content
      */
 function processRichContent(payload) {
-    if (!payload.richContent || payload.richContent.length === 0) return '';
+  if (!payload.richContent || payload.richContent.length === 0) return '';
 
-    const richContent = payload.richContent[0];
-    let richContentHTML = '';
+  const richContent = payload.richContent[0];
+  let richContentHTML = '';
 
-    // ประมวลผลแต่ละประเภทของ Rich Content
-    richContent.forEach(item => {
-        switch (item.type) {
-            case 'property_list':
-                richContentHTML += renderPropertyList(item.properties);
-                break;
-            case 'info':
-                richContentHTML += renderInfoCard(item);
-                break;
-            case 'chips':
-                richContentHTML += renderChips(item);
-                break;
-            case 'image':
-                richContentHTML += renderImage(item);
-                break;
-            case 'button':
-                richContentHTML += renderButton(item);
-                break;
-            case 'list':
-                richContentHTML += renderList(item);
-                break;
-            case 'custom_card':
-                richContentHTML += renderPropertyCard(item.property_data);
-                break;
-            default:
-                console.log('Unknown rich content type:', item.type);
-        }
-    });
+  // ประมวลผลแต่ละประเภทของ Rich Content
+  richContent.forEach(item => {
+    console.log('Processing rich content item:', item);
 
-    return richContentHTML;
+    switch (item.type) {
+      case 'property_list':
+        richContentHTML += renderPropertyList(item.properties);
+        break;
+      case 'info':
+        richContentHTML += renderInfoCard(item);
+        break;
+      case 'chips':
+        richContentHTML += renderChips(item);
+        break;
+      case 'image':
+        richContentHTML += renderImage(item.image ? item.image.src : item);
+        break;
+      case 'button':
+        richContentHTML += renderButton(item);
+        break;
+      case 'list':
+        richContentHTML += renderList(item);
+        break;
+      case 'custom_card':
+        richContentHTML += renderPropertyCard(item.property_data);
+        break;
+      default:
+        console.log('Unknown rich content type:', item.type);
+    }
+  });
+
+  return richContentHTML;
 }
 
 function renderPropertyCard(property) {
-  // กำหนดประเภท tag (เช่า หรือ ขาย)
-  const tagType = property.tag && property.tag.toLowerCase().includes('เช่า') ? 'เช่า' : 'ขาย';
-  const tagClass = tagType === 'เช่า' ? 'rent-tag' : 'buy-tag';
+  // กำหนดประเภทธุรกรรม (เช่า หรือ ขาย)
+  const isRent = property.tag && property.tag.toLowerCase().includes('เช่า');
+  const tagText = isRent ? 'เช่า' : 'ขาย';
 
-  // กำหนดสไตล์ตามรูปแบบที่ต้องการ
+  // กำหนดรูปภาพ
+  const imageUrl = property.imageUrl || 'assets/images/property-placeholder.jpg';
+
+  // กำหนดลิงก์
+  const link = property.link || '#';
+
+  // จากรูปต้นแบบ มีการใช้ชื่อที่สั้นกระชับ
+  const propertyName = (property.building || 'คอนโดมิเนียม');
+
+  // สร้าง HTML แบบเหมือนต้นแบบทุกประการ
   return `
-    <div class="property-li-card" data-property-id="${property.id || ''}" data-text="ขอดูรายละเอียดของ ${property.title || 'อสังหาริมทรัพย์'} เพิ่มเติม">
-      <div class="property-li-image">
-        <img src="${property.imageUrl || 'assets/images/property-placeholder.jpg'}"
-             alt="${property.title || 'อสังหาริมทรัพย์'}">
-        <div class="property-li-tag ${tagClass}">${property.tag || 'ขาย'}</div>
+    <div class="li-property-card" onclick="window.open('${link}', '_blank')">
+      <div class="li-property-left">
+        <img src="${imageUrl}" alt="${property.title || 'อสังหาริมทรัพย์'}">
       </div>
-      <div class="property-li-info">
-        <div class="property-li-title">${property.tag || 'ขาย'} ${property.title || 'ไม่มีชื่อ'}</div>
-        <div class="property-li-location">
-          <i class="fas fa-map-marker-alt"></i> ${property.location || 'ไม่ระบุที่ตั้ง'}
+      <div class="li-property-right">
+        <div class="li-property-badge">
+          <i class="fas fa-building"></i> ${tagText}
         </div>
-        <div class="property-li-price">฿${property.price || '-'}</div>
+        <div class="li-property-title">${tagText} ${propertyName}</div>
+        <div class="li-property-code">${tagText}เช่า 001</div>
+        <div class="li-property-location">
+          <i class="fas fa-map-marker-alt"></i> ${property.location || 'ที่ตั้ง'}
+        </div>
+        <div class="li-property-price">฿${property.price || '-'}</div>
       </div>
     </div>
   `;
 }
+
     // เพิ่ม Event Listeners สำหรับองค์ประกอบแบบโต้ตอบ
 function addInteractiveListeners(richContentElement) {
     console.log('Setting up interactive elements');

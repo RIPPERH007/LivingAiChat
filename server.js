@@ -413,9 +413,6 @@ socket.on('request_property_search', async (data) => {
 
 // --------- API Routes ---------
 
-/**
- * API สำหรับส่งข้อความไปยัง Dialogflow
- */
 app.post('/api/dialogflow', async (req, res) => {
   try {
     const { query, sessionId, userInfo } = req.body;
@@ -444,14 +441,12 @@ app.post('/api/dialogflow', async (req, res) => {
           phone: null,
           timestamp: Date.now()
         },
-        currentStep: 1, // เพิ่มตัวแปรเก็บ step ปัจจุบัน
+        currentStep: 1,
         propertySearch: {
-          buildingType: null,         // เช่า, ซื้อ, ขาย, เซ้ง (step 1)
-          zoneId: null,       // ทำเลที่ตั้ง (step 2)
-          price: null,            // ราคา (step 3)
-          transactionType: null,  // เช่า, ซื้อ, ขาย, เซ้ง (step 4)
-          location: null,         // ทำเลที่ตั้ง (step 5)
-          propertyType: null,     // ประเภทอสังหาริมทรัพย์ (step 6)
+          transaction_type: null, // Step 1: ประเภทธุรกรรม (เช่า/ซื้อ)
+          building_type: null,    // Step 2: ประเภทอสังหาริมทรัพย์
+          location: null,         // Step 3: ทำเลที่ตั้ง
+          price: null,            // Step 4: ราคา (และค้นหาทันที)
           isComplete: false,
           searchReady: false
         }
@@ -484,31 +479,70 @@ app.post('/api/dialogflow', async (req, res) => {
       },
     };
 
-    // เพิ่ม queryParams เพื่อบังคับให้ตรงกับ step ปัจจุบัน
-    // เฉพาะเมื่อไม่ใช่การค้นหาโดยตรง (ข้อความไม่ใช่ "ค้นหาอสังหาริมทรัพย์")
-    if (!query.includes("ค้นหาอสังหาริมทรัพย์") && sessionData[currentSessionId].currentStep) {
-      const currentStep = sessionData[currentSessionId].currentStep || 1;
-      console.log(`Current Step for ${currentSessionId}: ${currentStep}`);
+    // ตั้ง context ตาม step ปัจจุบัน
+    const currentStep = sessionData[currentSessionId].currentStep || 1;
+    console.log(`[${new Date().toISOString()}] [Context] [${currentSessionId}] Current step: ${currentStep}`);
 
-      // บังคับให้เรียกใช้ intent ตาม step ปัจจุบัน
-      request.queryParams = {
-        contexts: [
-          {
-            name: `${sessionPath}/contexts/force_step${currentStep}`,
-            lifespanCount: 1
-          }
-        ]
-      };
+
+    // กำหนด context ตาม step ปัจจุบัน
+    if (!query.includes("ค้นหาอสังหาริมทรัพย์")) {
+      switch(currentStep) {
+        case 1:
+          // บังคับให้เรียกใช้ intent step1_transaction_type
+          request.queryParams = {
+            contexts: [
+              {
+                name: `${sessionPath}/contexts/force_step1_transaction_type`,
+                lifespanCount: 1
+              }
+            ]
+          };
+          break;
+        case 2:
+          // บังคับให้เรียกใช้ intent step2_building_type
+          request.queryParams = {
+            contexts: [
+              {
+                name: `${sessionPath}/contexts/force_step2_building_type`,
+                lifespanCount: 1
+              }
+            ]
+          };
+          break;
+        case 3:
+          // บังคับให้เรียกใช้ intent step3_location
+          request.queryParams = {
+            contexts: [
+              {
+                name: `${sessionPath}/contexts/force_step3_location`,
+                lifespanCount: 1
+              }
+            ]
+          };
+          break;
+        case 4:
+          // บังคับให้เรียกใช้ intent step4_price
+          request.queryParams = {
+            contexts: [
+              {
+                name: `${sessionPath}/contexts/step4_price`,
+                lifespanCount: 1
+              }
+            ]
+          };
+          break;
+      }
     }
 
-    // ส่ง request ไปยัง Dialogflow
+
+    console.log(`[${new Date().toISOString()}] [Dialogflow] [${currentSessionId}] Sending query: "${query}"`);
     const responses = await sessionClient.detectIntent(request);
     const result = responses[0].queryResult;
     const detectedIntent = result.intent ? result.intent.displayName : 'ไม่พบ intent';
 
-    console.log(`Detected Intent: ${detectedIntent}`);
+    console.log(`[${new Date().toISOString()}] [Dialogflow] [${currentSessionId}] Detected Intent: ${detectedIntent}`);
 
-    // บันทึกข้อความลงในประวัติการสนทนา
+    // ตรวจสอบว่ามีข้อมูลการสนทนาหรือไม่
     if (!conversations[currentSessionId]) {
       conversations[currentSessionId] = {
         messages: [],
@@ -526,31 +560,9 @@ app.post('/api/dialogflow', async (req, res) => {
     };
 
     // กำหนดค่าเริ่มต้นสำหรับข้อความบอท
-    let botMessageText = 'ไม่เข้าใจคำถาม กรุณาลองใหม่อีกครั้ง'; // ค่าเริ่มต้น
+    let botMessageText = result.fulfillmentText || 'ไม่เข้าใจคำถาม กรุณาลองใหม่อีกครั้ง';
 
-    // ปรับลำดับความสำคัญในการเลือกข้อความ
-    // 1. ใช้ข้อความจาก webhook ถ้ามี
-    if (result.webhookUsed && result.fulfillmentMessages && result.fulfillmentMessages.length > 0) {
-      // ดึงข้อความจาก webhook
-      const webhookMessage = result.fulfillmentMessages.find(msg => msg.text && msg.text.text && msg.text.text.length > 0);
-
-      if (webhookMessage) {
-        botMessageText = webhookMessage.text.text[0];
-        console.log('Using text from webhook message:', botMessageText);
-      }
-      // ถ้าไม่มีข้อความจาก webhook ให้ใช้ fulfillmentText
-      else if (result.fulfillmentText && result.fulfillmentText.trim() !== '') {
-        botMessageText = result.fulfillmentText;
-        console.log('Using fulfillmentText because webhook message is empty:', botMessageText);
-      }
-    }
-    // 2. ถ้าไม่ใช้ webhook ให้ใช้ fulfillmentText โดยตรง
-    else if (result.fulfillmentText && result.fulfillmentText.trim() !== '') {
-      botMessageText = result.fulfillmentText;
-      console.log('Using fulfillmentText (no webhook):', botMessageText);
-    }
-
-    // สร้างข้อความบอทเพียงครั้งเดียว
+    // สร้างข้อความบอท
     const botMessage = {
       sender: 'bot',
       text: botMessageText,
@@ -559,244 +571,439 @@ app.post('/api/dialogflow', async (req, res) => {
       room: currentSessionId
     };
 
-    // บันทึกข้อความ
+    // บันทึกข้อความลงในประวัติการสนทนา
     conversations[currentSessionId].messages.push(userMessage);
     conversations[currentSessionId].messages.push(botMessage);
-
-    // อัปเดตเวลากิจกรรมล่าสุด
     conversations[currentSessionId].lastActivity = Date.now();
 
     // ส่งข้อความผู้ใช้ผ่าน Socket.IO
     io.to(currentSessionId).emit('new_message', userMessage);
 
-    // เพิ่มบรรทัดนี้เพื่อส่งข้อความบอทไปยังผู้ใช้เสมอ
-    if(botMessageText === "ไม่เข้าใจคำถาม กรุณาลองใหม่อีกครั้ง"){
-          console.log('Using 111:', botMessageText);
-
-    }else{
-          console.log('Using 3123', botMessageText);
-
-    io.to(currentSessionId).emit('new_message', botMessage);
+    // ตรวจสอบข้อความบอทก่อนส่ง
+    if (botMessageText.trim() !== 'ไม่มีข้อคำถาม กรุณาลองใหม่อีกครั้ง' &&
+        !isDuplicateMessage(botMessage, currentSessionId)) {
+      // ส่งข้อความบอทไปยังผู้ใช้
+      io.to(currentSessionId).emit('new_message', botMessage);
     }
 
-    // ตรวจสอบ intent และเก็บข้อมูลตามขั้นตอน
+    // ตรวจสอบและจัดการ intent
     let shouldMoveToNextStep = false;
 
-    if (detectedIntent === 'provide_user_info') {
-      const parameters = result.parameters.fields;
-      if (parameters) {
-        if (parameters.name && parameters.name.stringValue) {
-          sessionData[currentSessionId].userInfo.name = parameters.name.stringValue;
+    // Log สถานะการค้นหาก่อนอัพเดต
+    if (sessionData[currentSessionId].propertySearch) {
+      console.log(`[${new Date().toISOString()}] [PropertySearch] [${currentSessionId}] Before intent handling:`,
+        JSON.stringify(sessionData[currentSessionId].propertySearch, null, 2));
+    }
+
+    // จัดการ intent ตาม steps
+    // เพิ่ม intent debug logging
+    console.log(`[${new Date().toISOString()}] [Intent Debug] [${currentSessionId}] Intent: ${detectedIntent}, Query: "${query}", Step: ${currentStep}`);
+
+    // จัดการ intent ตาม steps
+    if (detectedIntent === 'step1_transaction_type') {
+      // Step 1: เก็บข้อมูลประเภทธุรกรรม
+      const transactionType = getTransactionTypeFromQuery(query);
+      console.log(`[${new Date().toISOString()}] [Step1] [${currentSessionId}] Transaction type: ${transactionType}`);
+
+      // เพิ่มการตรวจสอบค่าว่าง
+      if (transactionType && transactionType.trim() !== '') {
+        sessionData[currentSessionId].propertySearch.transaction_type = transactionType;
+        shouldMoveToNextStep = true;
+      }
+    }
+    else if ( detectedIntent === 'step2_location') {
+      // Step 2: เก็บข้อมูลประเภทอสังหาริมทรัพย์
+      console.log(`[${new Date().toISOString()}] [Step2] [${currentSessionId}] Building type: ${query}`);
+
+      // เพิ่มการตรวจสอบค่าว่าง
+      if (query && query.trim() !== '') {
+        sessionData[currentSessionId].propertySearch.building_type = query;
+        shouldMoveToNextStep = true;
+      }
+
+      console.log(`[${new Date().toISOString()}] [PropertySearch] [${currentSessionId}] Updated building_type: ${query}`);
+    }
+    else if (detectedIntent === 'step3_price') {
+      // Step 3: เก็บข้อมูลทำเลที่ตั้ง
+      console.log(`[${new Date().toISOString()}] [Step3] [${currentSessionId}] Location: ${query}`);
+
+      // เพิ่มการตรวจสอบค่าว่าง
+      if (query && query.trim() !== '') {
+        sessionData[currentSessionId].propertySearch.location = query;
+        shouldMoveToNextStep = true;
+      }
+    }
+    else if (detectedIntent === 'search_property') {
+      // Step 4: เก็บข้อมูลราคาและค้นหาทันที
+      console.log(`[${new Date().toISOString()}] [Step4] [${currentSessionId}] Price or search query: "${query}"`);
+
+      // ตรวจสอบว่าเป็นคำสั่งค้นหาหรือไม่
+      if (query.toLowerCase().includes('ค้นหา') ||
+          query.toLowerCase().includes('search') ||
+          query.toLowerCase().includes('หา')) {
+
+        console.log(`[${new Date().toISOString()}] [Step4] [${currentSessionId}] Detected search command: "${query}"`);
+
+        // ตรวจสอบว่ามีข้อมูลราคาอยู่แล้วหรือไม่
+        if (!sessionData[currentSessionId].propertySearch.price) {
+          // ถ้ายังไม่มีราคา ให้ตั้งเป็นค่าเริ่มต้น
+          sessionData[currentSessionId].propertySearch.price = "1";
+          console.log(`[${new Date().toISOString()}] [Step4] [${currentSessionId}] Using default price range: 1-5000000`);
         }
-        if (parameters.email && parameters.email.stringValue) {
-          sessionData[currentSessionId].userInfo.email = parameters.email.stringValue;
+
+      } else {
+        // ถ้าไม่ใช่คำสั่งค้นหา ให้เช็คว่าเป็นราคาที่ถูกต้องหรือไม่
+        let validPrice = null;
+
+        // ลองแยกราคาออกมาด้วย regex
+        const priceMatch = query.match(/(\d[\d,]*(?:\.\d+)?)\s*(?:-|ถึง|to)?\s*(\d[\d,]*(?:\.\d+)?)?/i);
+
+        if (priceMatch) {
+          // ถ้าพบตัวเลขในข้อความ
+          if (priceMatch[2]) {
+            // กรณีมีช่วงราคา เช่น "1000000-2000000" หรือ "1,000,000 ถึง 2,000,000"
+            const startPrice = priceMatch[1].replace(/,/g, '');
+            const endPrice = priceMatch[2].replace(/,/g, '');
+            validPrice = `${startPrice}-${endPrice}`;
+          } else {
+            // กรณีมีราคาเดียว
+            validPrice = priceMatch[1].replace(/,/g, '');
+          }
+
+          console.log(`[${new Date().toISOString()}] [Step4] [${currentSessionId}] Extracted price: ${validPrice}`);
+        } else {
+          // ถ้าไม่พบตัวเลขในข้อความ ให้ใช้ค่าเริ่มต้น
+          validPrice = "1";
+          console.log(`[${new Date().toISOString()}] [Step4] [${currentSessionId}] No valid price in query, using default: 1-5000000`);
         }
-        if (parameters.phone && parameters.phone.stringValue) {
-          sessionData[currentSessionId].userInfo.phone = parameters.phone.stringValue;
+
+        // บันทึกราคาที่ผ่านการตรวจสอบแล้ว
+        sessionData[currentSessionId].propertySearch.price = validPrice;
+      }
+
+      // ตรวจสอบว่ามีข้อมูลทั้งหมดที่จำเป็นหรือไม่
+      const search = sessionData[currentSessionId].propertySearch;
+      const hasTransactionType = !!search.transaction_type;
+      const hasBuildingType = !!search.building_type;
+      const hasLocation = !!search.location;
+      const hasPrice = !!search.price;
+
+      console.log(`[${new Date().toISOString()}] [PropertySearch] [${currentSessionId}] Search data check:`,
+        `Transaction type: ${hasTransactionType ? 'YES' : 'NO'},`,
+        `Building type: ${hasBuildingType ? 'YES' : 'NO'},`,
+        `Location: ${hasLocation ? 'YES' : 'NO'},`,
+        `Price: ${hasPrice ? 'YES' : 'NO'}`);
+
+      // ถ้ามีข้อมูลไม่เพียงพอ ให้ขอข้อมูลเพิ่มเติม
+      if (!hasTransactionType || (!hasBuildingType && !hasLocation)) {
+        console.log(`[${new Date().toISOString()}] [PropertySearch] [${currentSessionId}] Insufficient data for search`);
+
+        // สร้างข้อความแจ้งเตือน
+        const insufficientDataMessage = {
+          sender: 'bot',
+          text: 'ขออภัย ฉันต้องการข้อมูลเพิ่มเติมเพื่อค้นหาอสังหาริมทรัพย์ให้คุณค่ะ',
+          intent: 'insufficient_data',
+          timestamp: Date.now(),
+          room: currentSessionId
+        };
+
+        // ส่งข้อความแจ้งเตือน
+        io.to(currentSessionId).emit('new_message', insufficientDataMessage);
+
+        // บันทึกข้อความแจ้งเตือนในประวัติการสนทนา
+        if (conversations[currentSessionId]) {
+          conversations[currentSessionId].messages.push({
+            sender: 'bot',
+            text: 'ขออภัย ฉันต้องการข้อมูลเพิ่มเติมเพื่อค้นหาอสังหาริมทรัพย์ให้คุณค่ะ',
+            intent: 'insufficient_data',
+            timestamp: Date.now()
+          });
+        }
+
+        // ถามคำถามตามข้อมูลที่ยังขาด
+        setTimeout(() => {
+          if (!hasTransactionType) {
+            // ถ้าไม่มีข้อมูลประเภทธุรกรรม (ซื้อ/เช่า)
+            const askTransactionMessage = {
+              sender: 'bot',
+              text: 'คุณต้องการซื้อหรือเช่าอสังหาริมทรัพย์คะ?',
+              intent: 'ask_transaction_type',
+              timestamp: Date.now() + 100,
+              room: currentSessionId
+            };
+
+            io.to(currentSessionId).emit('new_message', askTransactionMessage);
+
+            // บันทึกข้อความถามประเภทธุรกรรมในประวัติการสนทนา
+            if (conversations[currentSessionId]) {
+              conversations[currentSessionId].messages.push({
+                sender: 'bot',
+                text: 'คุณต้องการซื้อหรือเช่าอสังหาริมทรัพย์คะ?',
+                intent: 'ask_transaction_type',
+                timestamp: Date.now() + 100
+              });
+            }
+          } else if (!hasBuildingType && !hasLocation) {
+            // ถ้าไม่มีทั้งข้อมูลประเภทอสังหาริมทรัพย์และทำเลที่ตั้ง
+            // ให้ถามประเภทอสังหาริมทรัพย์ก่อน
+            const askBuildingTypeMessage = {
+              sender: 'bot',
+              text: 'คุณสนใจอสังหาริมทรัพย์ประเภทไหนคะ?',
+              intent: 'ask_building_type',
+              timestamp: Date.now() + 100,
+              room: currentSessionId
+            };
+
+            io.to(currentSessionId).emit('new_message', askBuildingTypeMessage);
+
+            // บันทึกข้อความถามประเภทอสังหาริมทรัพย์ในประวัติการสนทนา
+            if (conversations[currentSessionId]) {
+              conversations[currentSessionId].messages.push({
+                sender: 'bot',
+                text: 'คุณสนใจอสังหาริมทรัพย์ประเภทไหนคะ?',
+                intent: 'ask_building_type',
+                timestamp: Date.now() + 100
+              });
+            }
+          }
+        }, 1000); // รอ 1 วินาทีก่อนถามคำถามเพิ่มเติม
+
+        return; // ออกจากฟังก์ชันโดยไม่ทำการค้นหา
+      }
+
+      // ถ้ามีข้อมูลเพียงพอ ให้เริ่มค้นหา
+      // ตั้งค่าให้ข้อมูลครบถ้วนและพร้อมค้นหา
+      sessionData[currentSessionId].propertySearch.isComplete = true;
+      sessionData[currentSessionId].propertySearch.searchReady = true;
+
+      console.log(`[${new Date().toISOString()}] [PropertySearch] [${currentSessionId}] All steps complete - starting search immediately`);
+
+      // สร้างข้อความแจ้งกำลังค้นหา
+      const searchingMessage = {
+        sender: 'bot',
+        text: 'กำลังค้นหาอสังหาริมทรัพย์ตามเงื่อนไขของคุณ...',
+        intent: 'searching',
+        timestamp: Date.now() + 10,
+        room: currentSessionId
+      };
+
+      // ส่งข้อความผ่าน Socket.IO เมื่อไม่มีข้อความซ้ำ
+      if (!isDuplicateMessage(searchingMessage, currentSessionId)) {
+        io.to(currentSessionId).emit('new_message', searchingMessage);
+
+        // บันทึกข้อความเข้าประวัติการสนทนา
+        if (conversations[currentSessionId]) {
+          conversations[currentSessionId].messages.push({
+            sender: 'bot',
+            text: 'กำลังค้นหาอสังหาริมทรัพย์ตามเงื่อนไขของคุณ...',
+            intent: 'searching',
+            timestamp: Date.now() + 10
+          });
         }
       }
-    } else if (detectedIntent === 'request_agent') {
+
+      // ค้นหาหลังจากรอสักครู่ (เพื่อให้ข้อความ "กำลังค้นหา" แสดงก่อน)
+      setTimeout(() => {
+        searchPropertiesAndSendResponse(currentSessionId);
+      }, 1000);
+    }
+    else if (detectedIntent === 'request_agent') {
+      // ถ้าต้องการติดต่อแอดมิน
+      console.log(`[${new Date().toISOString()}] [Request Agent] [${currentSessionId}] User requested to speak with an agent`);
       conversations[currentSessionId].status = 'waiting';
+
+      // แจ้งแอดมินว่ามีผู้ใช้ต้องการติดต่อ
       io.emit('user_request_agent', {
         sessionId: currentSessionId,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        userInfo: sessionData[currentSessionId].userInfo
       });
-      console.log('User requested to speak with an agent. Session ID:', currentSessionId);
-    } else if (detectedIntent === 'step1') {
-      // เก็บข้อมูลจังหวัด
-      const parameters = result.parameters.fields;
-        // ถ้าไม่มีพารามิเตอร์ buildingType แต่ได้รับ intent step1 ให้เก็บข้อความผู้ใช้
-        sessionData[currentSessionId].propertySearch.buildingType = query;
-        console.log("Updated step1 with raw query:", query);
-        shouldMoveToNextStep = true;
-    } else if (detectedIntent === 'step2') {
-      // เก็บข้อมูลสิ่งอำนวยความสะดวก
-      const parameters = result.parameters.fields;
-        // ถ้าไม่มีพารามิเตอร์ zoneId แต่ได้รับ intent step2 ให้เก็บข้อความผู้ใช้
-        sessionData[currentSessionId].propertySearch.zoneId = query;
-        console.log("Updated step2 with raw query:", query);
-        shouldMoveToNextStep = true;
-    }  else if (detectedIntent === 'step3') {
-        // เก็บข้อมูลราคา
-        const parameters = result.parameters.fields;
-        // ถ้าไม่มีพารามิเตอร์ price แต่ได้รับ intent step3 ให้เก็บข้อความผู้ใช้
-        sessionData[currentSessionId].propertySearch.price = query;
-        console.log("Updated step3 with raw query:", query);
-        shouldMoveToNextStep = true;
-
-        // ตั้งค่าให้ข้อมูลครบถ้วน
-        sessionData[currentSessionId].propertySearch.isComplete = true;
-
-        // เพิ่มโค้ดนี้เพื่อให้ยิง API ทันทีเมื่อข้อมูลครบถ้วน
-        try {
-          console.log("ข้อมูลการค้นหาครบถ้วนแล้ว กำลังค้นหาอสังหาริมทรัพย์...");
-
-          // เรียกฟังก์ชันค้นหาอสังหาริมทรัพย์
-          searchPropertiesAndSendResponse(currentSessionId);
-        } catch (error) {
-          console.error("เกิดข้อผิดพลาดในการค้นหาอสังหาริมทรัพย์:", error);
-        }
-      } else if (query.includes("ค้นหาอสังหาริมทรัพย์") || detectedIntent === 'search_property') {
-      // ถ้าผู้ใช้สั่งค้นหา ให้เรียก API และแสดงผลลัพธ์
-      try {
-        console.log("Searching for properties with current data:", sessionData[currentSessionId].propertySearch);
-        const response = await axios.get('https://ownwebdev1.livinginsider.com/api/v1/test_order');
-
-        if (response.data && response.data.data && response.data.data.length > 0) {
-          // ปรับข้อมูลให้เป็นรูปแบบที่ต้องการแสดงผล
-          const propertyData = response.data.data.map(item => ({
-            id: item.web_id ? item.web_id.toString() : '',
-            imageUrl: item.photo || '',
-            title: item.name || 'ไม่ระบุชื่อ',
-            location: item.zone || 'ไม่ระบุที่ตั้ง',
-            price: item.price || '-',
-            tag: item.tag || 'ขาย',
-            link: item.link || '#',
-            details: item.details || '',
-            rooms: item.rooms || '',
-            bathrooms: item.bathrooms || '',
-            size: item.size || '',
-            contactPhone: item.contact_phone || ''
-          }));
-
-          // สร้าง payload สำหรับแสดงผลการค้นหา
-          const searchResultPayload = {
-            richContent: [[
-              {
-                type: "info",
-                title: "ผลการค้นหาอสังหาริมทรัพย์",
-                subtitle: `พบทั้งหมด ${response.data.count || propertyData.length} รายการ`
-              }
-            ]]
-          };
-
-          // เพิ่มการ์ดอสังหาริมทรัพย์แต่ละรายการ
-          propertyData.forEach(property => {
-            // สร้าง custom card layout
-            searchResultPayload.richContent[0].push({
-              type: "info",
-              title: `${property.tag} ${property.title}`,
-              subtitle: `${property.location}\n฿${property.price}`,
-              actionLink: property.link,
-              image: {
-                src: {
-                  rawUrl: property.imageUrl
-                }
-              }
-            });
-          });
-
-          // ส่ง payload กลับไปแสดงผล
-          const searchResultMessage = {
-            sender: 'bot',
-            intent: 'search_results',
-            timestamp: Date.now() + 1,
-            room: currentSessionId,
-            payload: searchResultPayload
-          };
-
-          io.to(currentSessionId).emit('new_message', searchResultMessage);
-
-          // บันทึกข้อความการค้นหาลงในประวัติการสนทนา
-          conversations[currentSessionId].messages.push({
-            sender: 'bot',
-            intent: 'search_results',
-            timestamp: Date.now() + 1,
-            payload: searchResultPayload
-          });
-        }
-      } catch (error) {
-        console.error("Error searching properties:", error);
-      }
     }
 
-    // อัปเดต step ปัจจุบันถ้าจำเป็น
-    if (shouldMoveToNextStep && sessionData[currentSessionId].currentStep) {
-      const currentStep = sessionData[currentSessionId].currentStep || 1;
-      const nextStep = currentStep < 3 ? currentStep + 1 : 3;
-      sessionData[currentSessionId].currentStep = nextStep;
-      console.log(`Moving from step ${currentStep} to step ${nextStep} for ${currentSessionId}`);
-    }
+     else if (detectedIntent === 're-search') {
+       // ล้างข้อมูลการค้นหาทั้งหมดเพื่อเริ่มใหม่
+       console.log(`[${new Date().toISOString()}] [Re-Search] [${currentSessionId}] Resetting all search data and starting over`);
 
-    // นับจำนวน step ที่มีข้อมูลแล้ว (สำหรับการค้นหาอสังหาฯ)
-    if (sessionData[currentSessionId].propertySearch) {
-      const search = sessionData[currentSessionId].propertySearch;
-      let completedSteps = 0;
-      if (search.buildingType) completedSteps++;
-      if (search.zoneId) completedSteps++;
-      if (search.price) completedSteps++;
-      if (search.transactionType) completedSteps++;
-      if (search.location) completedSteps++;
-      if (search.propertyType) completedSteps++;
+       // รีเซ็ต current step กลับไปที่ขั้นตอนแรก
+       sessionData[currentSessionId].currentStep = 1;
 
-      console.log(`Completed steps for ${currentSessionId}: ${completedSteps}/6`);
+       // รีเซ็ตข้อมูลการค้นหาทั้งหมด
+       sessionData[currentSessionId].propertySearch = {
+         transaction_type: null, // Step 1: ประเภทธุรกรรม (เช่า/ซื้อ)
+         building_type: null,    // Step 2: ประเภทอสังหาริมทรัพย์
+         location: null,         // Step 3: ทำเลที่ตั้ง
+         price: null,            // Step 4: ราคา
+         isComplete: false,
+         searchReady: false
+       };
 
-      // ถ้าครบ 6 steps หรือมีข้อมูลเพียงพอ (อย่างน้อย 3 steps)
-      if (completedSteps >= 2) {
-        sessionData[currentSessionId].propertySearch.searchReady = true;
-      }
-    }
+       // สร้างข้อความแจ้งเตือนว่าเริ่มค้นหาใหม่
+       const resetSearchMessage = {
+         sender: 'bot',
+         text: 'ฉันได้ล้างข้อมูลการค้นหาเดิมแล้ว มาเริ่มค้นหาใหม่กันค่ะ คุณต้องการซื้อหรือเช่าอสังหาริมทรัพย์คะ?',
+         intent: 're-search',
+         timestamp: Date.now() + 10,
+         room: currentSessionId
+       };
 
-    // ตรวจสอบ custom payload
+       // ส่งข้อความแจ้งเตือนผ่าน Socket.IO
+       io.to(currentSessionId).emit('new_message', resetSearchMessage);
+
+       // บันทึกข้อความลงในประวัติการสนทนา
+       if (conversations[currentSessionId]) {
+         conversations[currentSessionId].messages.push({
+           sender: 'bot',
+           text: 'ฉันได้ล้างข้อมูลการค้นหาเดิมแล้ว มาเริ่มค้นหาใหม่กันค่ะ',
+           intent: 're-search',
+           timestamp: Date.now() + 10
+         });
+       }
+
+       // เพิ่ม chips options สำหรับให้ผู้ใช้เลือกประเภทธุรกรรม
+       const transactionOptionsPayload = {
+         richContent: [
+           [
+             {
+               type: "chips",
+               options: [
+                 { text: "ซื้อ" },
+                 { text: "เช่า" }
+               ]
+             }
+           ]
+         ]
+       };
+
+
+       // บันทึกประวัติการรีเซ็ต
+       console.log(`[${new Date().toISOString()}] [PropertySearch] [${currentSessionId}] Search data has been reset`);
+       logCurrentSearchState(currentSessionId, 'After Reset');
+     }
+
+    // อัปเดต currentStep ถ้าจำเป็น
+   // หา code นี้ในไฟล์ (บรรทัดประมาณ 615-620):
+   if (shouldMoveToNextStep) {
+     const oldStep = sessionData[currentSessionId].currentStep;
+     const nextStep = oldStep < 4 ? oldStep + 1 : 4; // ไม่เกิน step 4
+
+     // อัปเดต step ต่อไป
+     if (nextStep !== oldStep) {
+       sessionData[currentSessionId].currentStep = nextStep;
+       console.log(`[${new Date().toISOString()}] [PropertySearch] [${currentSessionId}] Updated current step: ${oldStep} -> ${nextStep}`);
+
+     }
+   }
+
+    // ตรวจสอบ custom payload จาก Dialogflow
     let payloadSent = false;
 
-    if (result.fulfillmentMessages && result.fulfillmentMessages.length > 0) {
-      for (const message of result.fulfillmentMessages) {
-        if (message.payload) {
-          const payload = struct.decode(message.payload);
+// แก้ไขส่วนการตรวจสอบ payload จาก Dialogflow
+if (result.fulfillmentMessages && result.fulfillmentMessages.length > 0) {
+  for (const message of result.fulfillmentMessages) {
+    if (message.payload) {
+      const payload = struct.decode(message.payload);
 
-          // ส่ง payload เพียงครั้งเดียว
-          const payloadMessage = {
-            sender: 'bot',
-            intent: detectedIntent,
-            timestamp: Date.now() + 1, // +1 เพื่อให้ timestamp ไม่ซ้ำกับข้อความข้างต้น
-            room: currentSessionId,
-            payload: payload
-          };
+      // ส่ง payload เพียงครั้งเดียว
+      const payloadMessage = {
+        sender: 'bot',
+        intent: detectedIntent,
+        timestamp: Date.now() + 20, // +20 เพื่อให้ส่งหลังข้อความอื่น
+        room: currentSessionId,
+        payload: payload
+      };
 
-          console.log('Sending bot message with payload via Socket.IO');
-          io.to(currentSessionId).emit('new_message', payloadMessage);
-          payloadSent = true;
+      // ตรวจสอบว่ามีข้อความซ้ำหรือไม่
+      if (!isDuplicateMessage(payloadMessage, currentSessionId)) {
+        console.log(`[${new Date().toISOString()}] [Dialogflow] [${currentSessionId}] Sending bot message with payload`);
+        io.to(currentSessionId).emit('new_message', payloadMessage);
+        payloadSent = true;
 
-          // บันทึกข้อความพาโหลดลงในประวัติการสนทนา
-          conversations[currentSessionId].messages.push({
-            sender: 'bot',
-            intent: detectedIntent,
-            timestamp: Date.now() + 1,
-            payload: payload
-          });
-        }
+        // บันทึกข้อความพร้อม payload ลงในประวัติการสนทนา
+        conversations[currentSessionId].messages.push({
+          sender: 'bot',
+          intent: detectedIntent,
+          timestamp: Date.now() + 20,
+          payload: payload
+        });
+      } else {
+        console.log(`[${new Date().toISOString()}] [Dialogflow] [${currentSessionId}] Skip duplicate payload`);
       }
     }
+  }
+}
 
-    if (!payloadSent && sessionData[currentSessionId] && sessionData[currentSessionId].propertySearch) {
-        // ตรวจสอบว่ามีทั้ง zoneId และ price หรือไม่
-      const propertySearch = sessionData[currentSessionId].propertySearch;
-      const hasZoneId = propertySearch.zoneId !== null &&
-                        propertySearch.zoneId !== undefined &&
-                        propertySearch.zoneId !== "";
+// เพิ่มโค้ดนี้เพื่อสร้าง payload ตัวเลือกทำเลโดยอัตโนมัติถ้าไม่ได้รับจาก Dialogflow
+if (!payloadSent && sessionData[currentSessionId].currentStep === 3) {
+  console.log(`[${new Date().toISOString()}] [Dialogflow] [${currentSessionId}] No payload from Dialogflow, adding auto location options`);
 
-      const hasPrice = propertySearch.price !== null &&
-                       propertySearch.price !== undefined &&
-                       propertySearch.price !== "";
+  // สร้าง payload ตัวเลือกทำเล
+  const locationOptionsPayload = {
+    richContent: [
+      [
+        {
+          type: "chips",
+          options: [
+            { text: "ลาดพร้าว" },
+            { text: "บางนา" },
+            { text: "สุขุมวิท" },
+            { text: "รามคำแหง" }
+          ]
+        }
+      ]
+    ]
+  };
 
-      // แสดง search chips เมื่อมีทั้ง zoneId และ price
-      if (hasZoneId && hasPrice) {
-        const completedSteps = Object.values(sessionData[currentSessionId].propertySearch)
-          .filter(value => value !== null && value !== undefined && value !== false && value !== "").length;
+  // สร้างข้อความ payload
+  const locationOptionsMessage = {
+    sender: 'bot',
+    intent: 'auto_location_options',
+    timestamp: Date.now() + 30,
+    room: currentSessionId,
+    payload: locationOptionsPayload
+  };
 
+  // ส่ง payload ตัวเลือกทำเล
+  if (!isDuplicateMessage(locationOptionsMessage, currentSessionId)) {
+    io.to(currentSessionId).emit('new_message', locationOptionsMessage);
+
+    // บันทึก payload ตัวเลือกทำเลในประวัติการสนทนา
+    if (conversations[currentSessionId]) {
+      conversations[currentSessionId].messages.push({
+        sender: 'bot',
+        intent: 'auto_location_options',
+        timestamp: Date.now() + 30,
+        payload: locationOptionsPayload
+      });
+    }
+  }
+}
+    // ถ้ามีข้อมูลการค้นหาแต่ยังไม่ได้ส่ง payload chips ค้นหา ให้ส่ง chips ค้นหา
+    if (!payloadSent && sessionData[currentSessionId].propertySearch) {
+      const search = sessionData[currentSessionId].propertySearch;
+
+      // ตรวจสอบว่ามีข้อมูลอย่างน้อย 2 ใน 3 แต่ยังไม่ครบ 3
+      const completedSteps =
+        (search.transaction_type ? 1 : 0) +
+        (search.location ? 1 : 0) +
+        (search.price ? 1 : 0);
+
+      if (completedSteps >= 2 && completedSteps < 3) {
+        // สร้าง payload chips สำหรับค้นหา
         const searchChipsPayload = {
           richContent: [[
             {
               type: "info",
-              title: "ข้อมูลการค้นหาของคุณ",
-              subtitle: `มีข้อมูลการค้นหา ${completedSteps} รายการจากทั้งหมด 6 รายการ`
+              title: "ข้อมูลการค้นหา",
+              subtitle: `มีข้อมูล ${completedSteps} รายการแล้ว คุณต้องการค้นหาเลยหรือเพิ่มข้อมูลอีก?`
             },
             {
               type: "chips",
               options: [
                 {
-                  text: "ค้นหาอสังหาริมทรัพย์"
+                  text: "ค้นหาอสังหาริมทรัพย์เลย"
+                },
+                {
+                  text: "เพิ่มข้อมูลอีก"
                 }
               ]
             }
@@ -805,25 +1012,39 @@ app.post('/api/dialogflow', async (req, res) => {
 
         const searchChipsMessage = {
           sender: 'bot',
-          intent: 'search_property',
-          timestamp: Date.now() + 2,
+          intent: 'search_chips',
+          timestamp: Date.now() + 30, // +30 เพื่อให้ส่งหลังข้อความอื่น
           room: currentSessionId,
           payload: searchChipsPayload
         };
 
-        console.log('Sending search chips message via Socket.IO');
+        console.log(`[${new Date().toISOString()}] [PropertySearch] [${currentSessionId}] Sending search chips`);
         io.to(currentSessionId).emit('new_message', searchChipsMessage);
 
-        // บันทึกข้อความ chips ค้นหาลงในประวัติการสนทนา
+        // บันทึกข้อความลงในประวัติการสนทนา
         conversations[currentSessionId].messages.push({
           sender: 'bot',
-          intent: 'search_property',
-          timestamp: Date.now() + 2,
+          intent: 'search_chips',
+          timestamp: Date.now() + 30,
           payload: searchChipsPayload
         });
       }
     }
 
+    // Log สถานะการค้นหาหลังจัดการ intent
+    if (sessionData[currentSessionId].propertySearch) {
+      console.log(`[${new Date().toISOString()}] [PropertySearch] [${currentSessionId}] After intent handling:`,
+        JSON.stringify(sessionData[currentSessionId].propertySearch, null, 2));
+
+      // นับจำนวน steps ที่มีข้อมูล
+      const search = sessionData[currentSessionId].propertySearch;
+      const completedSteps =
+        (search.transaction_type ? 1 : 0) +
+        (search.location ? 1 : 0) +
+        (search.price ? 1 : 0);
+
+      console.log(`[${new Date().toISOString()}] [PropertySearch] [${currentSessionId}] Completed steps: ${completedSteps}/3`);
+    }
 
     // สร้าง response กลับไปยัง Live Chat
     const responseData = {
@@ -837,13 +1058,14 @@ app.post('/api/dialogflow', async (req, res) => {
 
     res.json(responseData);
   } catch (error) {
-    console.error('Error:', error);
+    console.error(`[${new Date().toISOString()}] [API Error]`, error);
     res.status(500).json({
       success: false,
       message: 'เกิดข้อผิดพลาดในการเชื่อมต่อกับ Dialogflow',
+      error: error.message
     });
   }
-});
+  });
 
 /**
  * API สำหรับส่งข้อความจากแอดมิน
@@ -1328,39 +1550,65 @@ app.get('/admin', (req, res) => {
 /**
  * เริ่มต้น server
  */
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
   console.log(`Server กำลังทำงานที่พอร์ต ${PORT}`);
 });
-async function searchPropertiesAndSendResponse(sessionId) {
+    async function searchPropertiesAndSendResponse(sessionId) {
   if (!sessionId || !sessionData[sessionId]) {
-    console.error("ไม่พบข้อมูล session สำหรับ sessionId:", sessionId);
+    console.error(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Cannot search: Session data not found`);
     return;
   }
 
   try {
+    // Log สถานะก่อนเริ่มค้นหา
+    console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Starting property search...`);
+
     // ดึงข้อมูลการค้นหาจาก session
     const searchData = sessionData[sessionId].propertySearch;
+    console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Search data:`,
+      JSON.stringify(searchData, null, 2));
 
     // แปลงข้อมูลเป็นพารามิเตอร์สำหรับ API
     let searchParams = {};
 
-    // แปลงข้อมูลการค้นหาเป็นพารามิเตอร์
-    if (searchData.buildingType) searchParams.province = searchData.buildingType;
-    if (searchData.zoneId) searchParams.facilities = searchData.zoneId;
-    if (searchData.price) searchParams.price = searchData.price;
-    if (searchData.transactionType) searchParams.transaction_type = searchData.transactionType;
-    if (searchData.location) searchParams.location = searchData.location;
-    if (searchData.propertyType) {
-      const propertyTypeCode = mapPropertyType(searchData.propertyType);
-      if (propertyTypeCode) searchParams.property_type = propertyTypeCode;
+    // แปลงข้อมูลการค้นหาเป็นพารามิเตอร์ API
+    if (searchData.transaction_type) {
+      searchParams.transaction_type = searchData.transaction_type;
+      console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Using transaction_type: ${searchData.transaction_type}`);
     }
 
-    console.log("กำลังค้นหาด้วยพารามิเตอร์:", searchParams);
+    if (searchData.building_type) {
+      const mappedType = mapPropertyType(searchData.building_type);
+      if (mappedType !== null) {
+        searchParams.post_type = mappedType;
+        console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Mapping building_type: "${searchData.building_type}" -> ${mappedType}`);
+      }
+    }
 
-    // เรียกใช้ API เพื่อค้นหาอสังหาริมทรัพย์
-    // ในที่นี้เราใช้ axios แต่สามารถใช้ fetch หรือวิธีอื่นได้
-    const apiUrl = 'https://ownwebdev1.livinginsider.com/api/v1/test_order';
+    if (searchData.location) {
+      searchParams.keyword = searchData.location;
+      console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Using location: ${searchData.location}`);
+    }
+
+    if (searchData.price) {
+      // ตรวจสอบว่าราคาเป็นข้อความค้นหาหรือไม่
+      if (searchData.price.includes('ค้นหา') ||
+          searchData.price.includes('หา') ||
+          searchData.price.includes('search')) {
+        // ใช้ค่าราคาเริ่มต้น
+        searchParams.price = "1"; // หรือค่าเริ่มต้นที่เหมาะสม
+      } else {
+        searchParams.price = searchData.price;
+      }
+      console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Using price: ${searchParams.price}`);
+    }
+
+    console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Final search parameters:`,
+      JSON.stringify(searchParams, null, 2));
+
+    // สร้าง URL สำหรับเรียก API
+    const apiUrl = 'https://ownwebdev1.livinginsider.com/api/v1/chat_prop_listing2';
 
     // สร้าง URL params
     const params = new URLSearchParams();
@@ -1372,8 +1620,12 @@ async function searchPropertiesAndSendResponse(sessionId) {
 
     // เรียกใช้ API
     const fullUrl = `${apiUrl}?${params.toString()}`;
-    console.log("กำลังเรียกใช้ API ที่:", fullUrl);
+    console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Final API URL: ${fullUrl}`);
 
+    // ส่งคำขอ API
+    console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Calling API...`);
+
+    // ใช้ axios.get พร้อม URL ที่สร้างขึ้น
     const response = await axios.get(fullUrl, {
       timeout: 10000,
       headers: {
@@ -1382,51 +1634,74 @@ async function searchPropertiesAndSendResponse(sessionId) {
       }
     });
 
-    console.log("ได้รับข้อมูลจาก API:", response.data);
+    console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] API response status: ${response.status}`);
+    const responseData = response.data;
 
     // ตรวจสอบว่ามีข้อมูลหรือไม่
-    if (response.data && response.data.data && response.data.data.length > 0) {
-      // แปลงข้อมูลให้เหมาะกับการแสดงผล
-      const properties = response.data.data.map(item => ({
-        id: item.web_id ? item.web_id.toString() : '',
-        imageUrl: item.photo || 'assets/images/property-placeholder.jpg',
-        title: item.name || 'ไม่ระบุชื่อ',
-        location: item.zone || 'ไม่ระบุที่ตั้ง',
-        price: item.price ? formatPrice(item.price) : '-',
-        tag: item.tag || 'ขาย',
-        link: item.link || '#'
-      }));
+    if (responseData && responseData.data && responseData.data.length > 0) {
+      console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Found ${responseData.data.length} properties`);
 
-      // สร้าง payload สำหรับแสดงผล
-      const searchResultPayload = {
-        richContent: [[
-          {
-            type: "info",
-            title: "ผลการค้นหาอสังหาริมทรัพย์",
-            subtitle: `พบทั้งหมด ${response.data.count || properties.length} รายการ`
-          }
-        ]]
-      };
-
-      // เพิ่มข้อมูลอสังหาริมทรัพย์แต่ละรายการ
-      properties.forEach(property => {
-        // สร้าง custom card layout
-        searchResultPayload.richContent[0].push({
-          type: "custom_card",
-          property_data: property
-        });
+      // แปลงข้อมูลจาก API ให้อยู่ในรูปแบบที่ต้องการแสดงผล
+      const properties = responseData.data.map((item, index) => {
+        return {
+          id: item.web_id || `prop-${index}`,
+          imageUrl: item.photo || 'assets/images/property-placeholder.jpg',
+          title: item.name || 'ไม่ระบุชื่อ',
+          location: item.zone_name || 'ไม่ระบุที่ตั้ง',
+          price: item.price || '-',
+          tag: item.tag || (searchData.transaction_type === 'เช่า' ? 'เช่า' : 'ขาย'),
+          link: item.link || '#',
+          building: item.building || '',
+          project_name: item.project_name || 'ไม่ระบุ'
+        };
       });
 
-      // ส่งข้อมูลผ่าน Socket.IO
+      // สร้าง summary text ตามข้อมูลการค้นหา
+      let summaryText = 'ผลการค้นหาอสังหาริมทรัพย์';
+      if (searchData.transaction_type) {
+        summaryText += ` สำหรับ${searchData.transaction_type}`;
+      }
+      if (searchData.building_type) {
+        summaryText += ` ประเภท${searchData.building_type}`;
+      }
+      if (searchData.location) {
+        summaryText += ` บริเวณ${searchData.location}`;
+      }
+      if (searchData.price) {
+        summaryText += ` ในช่วงราคา${searchData.price}`;
+      }
+
+      // สร้าง property_list สำหรับแสดงผลใน rich content
+      const propertyListItems = properties.slice(0, 5).map(property => ({
+        type: "custom_card",
+        property_data: property
+      }));
+
+      // สร้าง rich content
+      const richContent = [
+        [
+          {
+            type: "info",
+            title: summaryText,
+            subtitle: `พบทั้งหมด ${responseData.count || properties.length} รายการ`
+          },
+          ...propertyListItems
+        ]
+      ];
+
+      // ส่งข้อความผ่าน Socket.IO
       const searchResultMessage = {
         sender: 'bot',
         intent: 'search_results',
         timestamp: Date.now(),
         room: sessionId,
-        payload: searchResultPayload
+        text: responseData.sms || `พบอสังหาริมทรัพย์ทั้งหมด ${properties.length} รายการ`,
+        payload: {
+          richContent: richContent
+        }
       };
 
-      // ส่งข้อมูลไปยังห้องแชท
+      console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Sending search results message`);
       io.to(sessionId).emit('new_message', searchResultMessage);
 
       // บันทึกข้อความในประวัติการสนทนา
@@ -1435,42 +1710,132 @@ async function searchPropertiesAndSendResponse(sessionId) {
           sender: 'bot',
           intent: 'search_results',
           timestamp: Date.now(),
-          payload: searchResultPayload
+          text: responseData.sms || `พบอสังหาริมทรัพย์ทั้งหมด ${properties.length} รายการ`,
+          payload: {
+            richContent: richContent
+          }
         });
       }
 
-      // ส่งข้อมูลดิบไปยังไคลเอนต์
-      io.to(sessionId).emit('property_search_results', {
-        success: true,
-        data: {
-          data: properties,
-          count: response.data.count || properties.length,
-          more: response.data.more || null
-        }
-      });
-
-      console.log("ส่งผลการค้นหาสำเร็จ");
-    } else {
-      // กรณีไม่พบข้อมูล
-      const noResultsPayload = {
-        richContent: [[
-          {
-            type: "info",
-            title: "ผลการค้นหาอสังหาริมทรัพย์",
-            subtitle: "ไม่พบข้อมูลที่ตรงกับการค้นหาของคุณ"
-          },
-          {
-            type: "chips",
-            options: [
+      // เพิ่มการส่งข้อความปุ่มเพิ่มเติมถ้ามี more link
+      if (responseData.more && responseData.more.link) {
+        const moreButtonPayload = {
+          richContent: [
+            [
               {
-                text: "ค้นหาใหม่"
-              },
-              {
-                text: "ปรับเงื่อนไขการค้นหา"
+                type: "button",
+                options: [
+                  {
+                    text: responseData.more.txt || "ดูเพิ่มเติม",
+                    link: responseData.more.link
+                  }
+                ]
               }
             ]
-          }
-        ]]
+          ]
+        };
+
+        // ส่ง more button เป็นข้อความแยก
+        const moreButtonMessage = {
+          sender: 'bot',
+          intent: 'more_results',
+          timestamp: Date.now() + 100, // บวก 100 เพื่อให้ส่งหลังข้อความแรก
+          room: sessionId,
+          text: "คุณสามารถดูข้อมูลเพิ่มเติมได้จากลิงก์นี้",
+          payload: moreButtonPayload
+        };
+
+        // ส่งข้อมูลไปยังห้องแชท
+        io.to(sessionId).emit('new_message', moreButtonMessage);
+
+        // บันทึกข้อความในประวัติการสนทนา
+        if (conversations[sessionId]) {
+          conversations[sessionId].messages.push({
+            sender: 'bot',
+            intent: 'more_results',
+            timestamp: Date.now() + 100,
+            text: "คุณสามารถดูข้อมูลเพิ่มเติมได้จากลิงก์นี้",
+            payload: moreButtonPayload
+          });
+        }
+      }
+
+      // ส่งข้อความถามความต้องการเพิ่มเติม
+      setTimeout(() => {
+        const askMorePayload = {
+          richContent: [
+            [
+              {
+                type: "chips",
+                options: [
+                  {
+                    text: "ค้นหาเพิ่มเติม"
+                  },
+                  {
+                    text: "ฉันต้องการข้อมูลเพิ่มเติม"
+                  },
+                  {
+                    text: "ติดต่อเจ้าหน้าที่"
+                  }
+                ]
+              }
+            ]
+          ]
+        };
+
+        const askMoreMessage = {
+          sender: 'bot',
+          intent: 'ask_more',
+          timestamp: Date.now() + 200, // บวก 200 เพื่อให้ส่งหลังข้อความแรกและ more button
+          room: sessionId,
+          text: "คุณต้องการข้อมูลเพิ่มเติมหรือไม่?",
+          payload: askMorePayload
+        };
+
+        // ส่งข้อมูลไปยังห้องแชท
+        io.to(sessionId).emit('new_message', askMoreMessage);
+
+        // บันทึกข้อความในประวัติการสนทนา
+        if (conversations[sessionId]) {
+          conversations[sessionId].messages.push({
+            sender: 'bot',
+            intent: 'ask_more',
+            timestamp: Date.now() + 200,
+            text: "คุณต้องการข้อมูลเพิ่มเติมหรือไม่?",
+            payload: askMorePayload
+          });
+        }
+      }, 1000); // รอ 1 วินาที
+
+      console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Search completed successfully with ${properties.length} results`);
+    } else {
+      // กรณีไม่พบข้อมูล
+      console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] No properties found`);
+
+      const noResultsPayload = {
+        richContent: [
+          [
+            {
+              type: "info",
+              title: "ผลการค้นหาอสังหาริมทรัพย์",
+              subtitle: "ไม่พบข้อมูลที่ตรงกับการค้นหาของคุณ"
+            },
+            {
+              type: "chips",
+              options: [
+                {
+                  text: "ค้นหาใหม่"
+                },
+                {
+                  text: "ปรับเงื่อนไขการค้นหา"
+                },
+                {
+                  text: "ติดต่อเจ้าหน้าที่"
+                }
+              ]
+            }
+          ]
+        ]
       };
 
       const noResultsMessage = {
@@ -1478,6 +1843,7 @@ async function searchPropertiesAndSendResponse(sessionId) {
         intent: 'search_results',
         timestamp: Date.now(),
         room: sessionId,
+        text: "ไม่พบข้อมูลที่ตรงกับการค้นหา",
         payload: noResultsPayload
       };
 
@@ -1490,88 +1856,152 @@ async function searchPropertiesAndSendResponse(sessionId) {
           sender: 'bot',
           intent: 'search_results',
           timestamp: Date.now(),
+          text: "ไม่พบข้อมูลที่ตรงกับการค้นหา",
           payload: noResultsPayload
         });
       }
-
-      // ส่งข้อมูลดิบไปยังไคลเอนต์
-      io.to(sessionId).emit('property_search_results', {
-        success: false,
-        message: 'ไม่พบข้อมูลที่ตรงกับการค้นหา'
-      });
-
-      console.log("ไม่พบข้อมูลที่ตรงกับการค้นหา");
     }
   } catch (error) {
-      console.error("เกิดข้อผิดพลาดในการค้นหาอสังหาริมทรัพย์:", error);
+    console.error(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Error searching properties:`, error);
 
-      console.log("ใช้ข้อมูลตัวอย่างแทน");
-      const mockData = getMockPropertyData();
+    // ใช้ข้อมูลตัวอย่างแทนในกรณีเกิดข้อผิดพลาด
+    console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Using mock data instead`);
 
-      // สร้าง payload สำหรับแสดงผล
-      const searchResultPayload = {
-        richContent: [[
-          {
-            type: "info",
-            title: "ผลการค้นหาอสังหาริมทรัพย์ (ข้อมูลตัวอย่าง)",
-            subtitle: `พบทั้งหมด ${mockData.data.count} รายการ`
-          }
-        ]]
-      };
+    const mockProperties = [
+      {
+        id: '12345',
+        imageUrl: 'https://via.placeholder.com/300x200',
+        title: 'คอนโดใจกลางเมือง',
+        location: 'สุขุมวิท',
+        price: '3,500,000',
+        tag: searchData.transaction_type === 'เช่า' ? 'เช่า' : 'ขาย',
+        link: '#'
+      },
+      {
+        id: '67890',
+        imageUrl: 'https://via.placeholder.com/300x200',
+        title: 'บ้านเดี่ยว 3 ห้องนอน',
+        location: 'รังสิต',
+        price: '5,200,000',
+        tag: searchData.transaction_type === 'เช่า' ? 'เช่า' : 'ขาย',
+        link: '#'
+      },
+      {
+        id: '24680',
+        imageUrl: 'https://via.placeholder.com/300x200',
+        title: 'ทาวน์โฮมใหม่',
+        location: 'บางนา',
+        price: '12,000',
+        tag: searchData.transaction_type === 'เช่า' ? 'เช่า' : 'ขาย',
+        link: '#'
+      }
+    ];
 
-      // เพิ่มข้อมูลอสังหาริมทรัพย์แต่ละรายการ
-      mockData.data.data.forEach(property => {
-        // สร้าง custom card layout
-        searchResultPayload.richContent[0].push({
-          type: "custom_card",
-          property_data: property
-        });
-      });
+    // สร้าง summary text ตามข้อมูลการค้นหา
+    let summaryText = 'ผลการค้นหาอสังหาริมทรัพย์';
+    if (searchData.transaction_type) {
+      summaryText += ` สำหรับ${searchData.transaction_type}`;
+    }
+    if (searchData.location) {
+      summaryText += ` บริเวณ${searchData.location}`;
+    }
+    if (searchData.price) {
+      summaryText += ` ในช่วงราคา${searchData.price}`;
+    }
 
-      // ส่งข้อมูลผ่าน Socket.IO
-      const searchResultMessage = {
+    // สร้าง property list items
+    const propertyListItems = mockProperties.map(property => ({
+      type: "custom_card",
+      property_data: property
+    }));
+
+    // สร้าง rich content
+    const richContent = [
+      [
+        {
+          type: "info",
+          title: `${summaryText} (ข้อมูลตัวอย่าง)`,
+          subtitle: `พบทั้งหมด ${mockProperties.length} รายการ`
+        },
+        ...propertyListItems
+      ]
+    ];
+
+    // ส่งข้อมูลผ่าน Socket.IO
+    const searchResultMessage = {
+      sender: 'bot',
+      intent: 'search_results',
+      timestamp: Date.now(),
+      room: sessionId,
+      text: `พบอสังหาริมทรัพย์ตัวอย่างทั้งหมด ${mockProperties.length} รายการ`,
+      payload: {
+        richContent: richContent
+      }
+    };
+
+    // ส่งข้อมูลไปยังห้องแชท
+    io.to(sessionId).emit('new_message', searchResultMessage);
+
+    // บันทึกข้อความในประวัติการสนทนา
+    if (conversations[sessionId]) {
+      conversations[sessionId].messages.push({
         sender: 'bot',
         intent: 'search_results',
         timestamp: Date.now(),
+        text: `พบอสังหาริมทรัพย์ตัวอย่างทั้งหมด ${mockProperties.length} รายการ`,
+        payload: {
+          richContent: richContent
+        }
+      });
+    }
+
+    // ส่งข้อความถามความต้องการเพิ่มเติม
+    setTimeout(() => {
+      const askMorePayload = {
+        richContent: [
+          [
+            {
+              type: "chips",
+              options: [
+                {
+                  text: "ค้นหาเพิ่มเติม"
+                },
+                {
+                  text: "ฉันต้องการข้อมูลเพิ่มเติม"
+                },
+                {
+                  text: "ติดต่อเจ้าหน้าที่"
+                }
+              ]
+            }
+          ]
+        ]
+      };
+
+      const askMoreMessage = {
+        sender: 'bot',
+        intent: 'ask_more',
+        timestamp: Date.now() + 100,
         room: sessionId,
-        payload: searchResultPayload
+        text: "คุณต้องการข้อมูลเพิ่มเติมหรือไม่?",
+        payload: askMorePayload
       };
 
       // ส่งข้อมูลไปยังห้องแชท
-      io.to(sessionId).emit('new_message', searchResultMessage);
+      io.to(sessionId).emit('new_message', askMoreMessage);
 
       // บันทึกข้อความในประวัติการสนทนา
       if (conversations[sessionId]) {
         conversations[sessionId].messages.push({
           sender: 'bot',
-          intent: 'search_results',
-          timestamp: Date.now(),
-          payload: searchResultPayload
+          intent: 'ask_more',
+          timestamp: Date.now() + 100,
+          text: "คุณต้องการข้อมูลเพิ่มเติมหรือไม่?",
+          payload: askMorePayload
         });
       }
-
-      // ส่งข้อมูลดิบไปยังไคลเอนต์
-      io.to(sessionId).emit('property_search_results', mockData);
-    }
-}
-
-// ฟังก์ชันแปลงประเภทอสังหาริมทรัพย์เป็น post_type
-function mapPropertyType(propertyType) {
-  if (!propertyType) return null;
-
-  if (typeof propertyType === 'number') {
-    return propertyType;
+    }, 1000); // รอ 1 วินาที
   }
-
-  const type = typeof propertyType === 'string' ? propertyType.toLowerCase() : '';
-
-  if (type.includes('คอนโด')) return 1;
-  if (type.includes('บ้าน') || type.includes('บ้านเดี่ยว')) return 2;
-  if (type.includes('ทาวน์เฮ้าส์') || type.includes('ทาวน์โฮม')) return 3;
-  if (type.includes('ที่ดิน')) return 4;
-  if (type.includes('อพาร์ทเม้นท์') || type.includes('อพาร์ทเม้น')) return 5;
-
-  return null;
 }
 
 // ฟังก์ชันแปลงประเภทธุรกรรมเป็น proprety_tag
@@ -1585,21 +2015,6 @@ function mapTransactionType(transactionType) {
   if (type.includes('เซ้ง')) return 'เซ้ง';
 
   return transactionType;
-}
-
-function formatPrice(price) {
-  if (!price) return '-';
-
-  let numPrice;
-  if (typeof price === 'string') {
-    numPrice = parseFloat(price.replace(/[^\d.-]/g, ''));
-  } else {
-    numPrice = price;
-  }
-
-  if (isNaN(numPrice)) return price;
-
-  return numPrice.toLocaleString();
 }
 function getMockPropertyData() {
   return {
@@ -1659,4 +2074,194 @@ function getMockPropertyData() {
       }
     }
   };
+}
+
+// ฟังก์ชันช่วยในการแปลงประเภทอสังหาริมทรัพย์
+function mapPropertyType(propertyType) {
+  console.log(`Mapping property type from: "${propertyType}"`);
+
+  if (!propertyType) return null;
+
+  if (typeof propertyType === 'number') {
+    return propertyType;
+  }
+
+  const type = typeof propertyType === 'string' ? propertyType.toLowerCase() : '';
+
+  if (type.includes('คอนโด') || type.includes('condo')) return 1;
+  if (type.includes('บ้าน') || type.includes('บ้านเดี่ยว') || type.includes('house')) return 2;
+  if (type.includes('ทาวน์เฮ้าส์') || type.includes('ทาวน์โฮม') || type.includes('townhouse') || type.includes('townhome')) return 3;
+  if (type.includes('ที่ดิน') || type.includes('land')) return 4;
+  if (type.includes('อพาร์ทเม้นท์') || type.includes('อพาร์ทเม้น') || type.includes('apartment')) return 5;
+
+  // กรณีไม่พบประเภทที่ตรงกัน ให้ใช้ค่าเริ่มต้น (เช่น คอนโด)
+  console.log(`Could not map property type: "${propertyType}", using default value 1`);
+  return 1;
+}
+
+// ฟังก์ชันช่วยในการจัดรูปแบบราคา
+function formatPrice(price) {
+  if (!price) return '-';
+
+  let numPrice;
+  if (typeof price === 'string') {
+    numPrice = parseFloat(price.replace(/[^\d.-]/g, ''));
+  } else {
+    numPrice = price;
+  }
+
+  if (isNaN(numPrice)) return price;
+
+  return numPrice.toLocaleString('th-TH');
+}
+
+function logPropertySearchStep(sessionId, step, value, fullData = null) {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] [PropertySearch] [${sessionId}] [Step: ${step}] Value: ${value}`);
+
+  // ถ้ามีการส่งข้อมูลทั้งหมดมา ให้แสดงสถานะของทุก step
+  if (fullData) {
+    console.log(`[${timestamp}] [PropertySearch] [${sessionId}] Current search data:`, JSON.stringify(fullData, null, 2));
+
+    // นับจำนวน step ที่มีข้อมูลแล้ว
+    const completedSteps = Object.entries(fullData)
+      .filter(([key, value]) => {
+        // ไม่นับ field ที่เป็น flag
+        if (key === 'isComplete' || key === 'searchReady') return false;
+        // นับเฉพาะ field ที่มีค่า
+        return value !== null && value !== undefined && value !== '';
+      }).length;
+
+    console.log(`[${timestamp}] [PropertySearch] [${sessionId}] Completed steps: ${completedSteps}/3`);
+
+    // แสดงสถานะความพร้อมในการค้นหา
+    console.log(`[${timestamp}] [PropertySearch] [${sessionId}] Search ready: ${fullData.searchReady}`);
+    console.log(`[${timestamp}] [PropertySearch] [${sessionId}] Data complete: ${fullData.isComplete}`);
+  }
+}
+
+function updatePropertySearchStep(sessionId, step, value, stepName) {
+  if (!sessionData[sessionId]) {
+    console.error(`[PropertySearch] [${sessionId}] Session data not found`);
+    return false;
+  }
+
+  if (!sessionData[sessionId].propertySearch) {
+    console.error(`[PropertySearch] [${sessionId}] Property search data not found`);
+    return false;
+  }
+
+  // บันทึกค่าเดิมเพื่อเปรียบเทียบ
+  const oldValue = sessionData[sessionId].propertySearch[stepName];
+
+  // อัปเดตค่า
+  sessionData[sessionId].propertySearch[stepName] = value;
+
+  // Log การอัปเดต
+  logPropertySearchStep(
+    sessionId,
+    step,
+    value,
+    sessionData[sessionId].propertySearch
+  );
+
+  // แสดงการเปลี่ยนแปลง
+  console.log(`[PropertySearch] [${sessionId}] [${step}] Updated ${stepName}: "${oldValue}" -> "${value}"`);
+
+  return true;
+}
+
+function logCurrentSearchState(sessionId, context = '') {
+  if (!sessionData[sessionId] || !sessionData[sessionId].propertySearch) {
+    console.error(`[PropertySearch] Cannot log search state: No data for session ${sessionId}`);
+    return;
+  }
+
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] [PropertySearch] [${sessionId}] [${context}] Current search state:`);
+  console.log(JSON.stringify(sessionData[sessionId].propertySearch, null, 2));
+
+  // แสดงสถานะของแต่ละ step ว่ามีข้อมูลหรือไม่
+  const search = sessionData[sessionId].propertySearch;
+  console.log(`[${timestamp}] [PropertySearch] [${sessionId}] Step status:`);
+  console.log(`  Step 1 (transaction_type): ${search.transaction_type ? 'YES' : 'NO'}`);
+  console.log(`  Step 2 (location): ${search.location ? 'YES' : 'NO'}`);
+  console.log(`  Step 3 (price): ${search.price ? 'YES' : 'NO'}`);
+}
+
+function getTransactionTypeFromQuery(query) {
+  if (!query) return null;
+
+  const lowerQuery = query.toLowerCase();
+
+  if (lowerQuery.includes('เช่า') || lowerQuery.includes('rent')) {
+    return 'เช่า';
+  }
+
+  if (lowerQuery.includes('ซื้อ') || lowerQuery.includes('buy')) {
+    return 'ซื้อ';
+  }
+
+  if (lowerQuery.includes('ขาย') || lowerQuery.includes('sell') || lowerQuery.includes('sale')) {
+    return 'ขาย';
+  }
+
+  if (lowerQuery.includes('เซ้ง')) {
+    return 'เซ้ง';
+  }
+
+  // กรณีไม่พบคำที่ระบุประเภทธุรกรรมโดยตรง ให้คืนค่าข้อความเดิม
+  return query;
+}
+function isDuplicateMessage(message, sessionId, timeWindow = 5000) {
+  if (!conversations[sessionId] || !conversations[sessionId].messages) {
+    return false;
+  }
+
+  // ตรวจสอบ 5 ข้อความล่าสุด
+  const recentMessages = conversations[sessionId].messages
+    .filter(msg => msg.sender === message.sender)
+    .slice(-5);
+
+  // เพิ่ม debug log
+  console.log(`[${new Date().toISOString()}] [DuplicateCheck] Checking for duplicates of message:`,
+    JSON.stringify({
+      text: message.text,
+      intent: message.intent,
+      sender: message.sender,
+      hasPayload: !!message.payload
+    }));
+
+  return recentMessages.some(msg => {
+    // เช็คข้อความเหมือนกัน (สำหรับข้อความทั่วไป)
+    const isSameText = message.text && msg.text === message.text;
+
+    // เช็ค intent เหมือนกัน
+    const isSameIntent = message.intent && msg.intent === message.intent;
+
+    // เช็คเวลาห่างกันไม่เกิน timeWindow
+    const isWithinTimeWindow = Math.abs(msg.timestamp - message.timestamp) < timeWindow;
+
+    // เช็ค payload เหมือนกัน (ถ้ามี)
+    const isSamePayload = message.payload && msg.payload &&
+      JSON.stringify(message.payload) === JSON.stringify(msg.payload);
+
+    // ข้อความจะถือว่าซ้ำก็ต่อเมื่อ
+    // 1. มีข้อความเหมือนกัน หรือ
+    // 2. มี intent เหมือนกันและมี payload เหมือนกัน
+    // และอยู่ในช่วงเวลาที่กำหนด
+    const isDuplicate = (isSameText || (isSameIntent && isSamePayload)) && isWithinTimeWindow;
+
+    if (isDuplicate) {
+      console.log(`[${new Date().toISOString()}] [DuplicateCheck] Found duplicate:`,
+        JSON.stringify({
+          text: msg.text,
+          intent: msg.intent,
+          sender: msg.sender,
+          timestamp: msg.timestamp
+        }));
+    }
+
+    return isDuplicate;
+  });
 }

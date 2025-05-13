@@ -4,7 +4,7 @@
  */
 
 // URL ของ backend API ที่เชื่อมต่อกับ Dialogflow
-const DIALOGFLOW_API_URL = 'http://localhost:3000/api/dialogflow';
+const DIALOGFLOW_API_URL = 'http://localhost:4000/api/dialogflow';
 
 /**
  * ส่งข้อความไปยัง Dialogflow
