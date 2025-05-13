@@ -75,13 +75,31 @@ io.on('connection', (socket) => {
   socket.emit('test', { message: 'Socket connection test from server', timestamp: Date.now() });
 
   // รับการสมัครห้องแชท (เมื่อผู้ใช้หรือแอดมินเข้าร่วมห้อง)
-  socket.on('join', (roomId) => {
-    console.log(`Client ${socket.id} joined room: ${roomId}`);
+socket.on('join', (roomId) => {
+    console.log(`[${new Date().toISOString()}] [Socket] Client ${socket.id} joined room: ${roomId}`);
+
+    // เก็บห้องก่อนหน้าเพื่อออกจากห้องเก่า
+    const previousRooms = Object.keys(socket.rooms).filter(room => room !== socket.id);
+
+    // ออกจากห้องเก่าก่อนเข้าห้องใหม่ (optional)
+    previousRooms.forEach(room => {
+      console.log(`[${new Date().toISOString()}] [Socket] Leaving previous room: ${room}`);
+      socket.leave(room);
+    });
+
+    // เข้าร่วมห้องใหม่
     socket.join(roomId);
+
     // แจ้งไคลเอนต์ว่าได้เข้าร่วมห้องแล้ว
     socket.emit('joined_room', { room: roomId, timestamp: Date.now() });
-  });
 
+    // ส่งข้อความแจ้งเตือนให้ทุกคนในห้องทราบว่ามีคนเข้ามา (optional)
+    socket.to(roomId).emit('room_notification', {
+      type: 'user_joined',
+      message: 'มีผู้ใช้เข้าร่วมห้องแชท',
+      timestamp: Date.now()
+    });
+  });
   // รับการเปลี่ยนสถานะแอดมิน
   socket.on('admin_status_change', (data) => {
     console.log('Admin status change received:', data);
@@ -1545,6 +1563,81 @@ app.patch('/api/property/search/:sessionId', (req, res) => {
  */
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public/admin-dashboard.html'));
+});
+
+// เพิ่มฟังก์ชันนี้ใน server.js
+async function addTrainingPhrase(projectId, intentId, phrase, language = 'th-TH') {
+  try {
+    // สร้าง clients
+    const intentsClient = new IntentsClient({
+      keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+    });
+
+    // สร้าง path สำหรับ intent
+    const intentPath = intentsClient.projectAgentIntentPath(projectId, intentId);
+
+    // ดึง intent ปัจจุบัน
+    const [intent] = await intentsClient.getIntent({ name: intentPath });
+
+    // เพิ่ม training phrase
+    const trainingPhrases = intent.trainingPhrases || [];
+    const newPhrase = {
+      parts: [{ text: phrase }],
+      type: 'EXAMPLE'
+    };
+
+    trainingPhrases.push(newPhrase);
+    intent.trainingPhrases = trainingPhrases;
+
+    // อัปเดต intent
+    const updateMask = {
+      paths: ['training_phrases']
+    };
+
+    const request = {
+      intent: intent,
+      updateMask: updateMask
+    };
+
+    const [updatedIntent] = await intentsClient.updateIntent(request);
+    console.log(`Training phrase "${phrase}" added to intent ${intentId}`);
+    return updatedIntent;
+  } catch (error) {
+    console.error('Error adding training phrase:', error);
+    throw error;
+  }
+}
+
+// เพิ่มในส่วนของ API routes ใน server.js
+app.post('/api/admin/add-training-phrase', async (req, res) => {
+  try {
+    const { phrase, intentId } = req.body;
+
+    if (!phrase || !intentId) {
+      return res.status(400).json({
+        success: false,
+        message: 'กรุณาระบุข้อความและ intent ID'
+      });
+    }
+
+    const updatedIntent = await addTrainingPhrase(
+      process.env.DIALOGFLOW_PROJECT_ID,
+      intentId,
+      phrase
+    );
+
+    res.json({
+      success: true,
+      message: 'เพิ่ม Training Phrase สำเร็จ',
+      intent: updatedIntent
+    });
+  } catch (error) {
+    console.error('Error adding training phrase:', error);
+    res.status(500).json({
+      success: false,
+      message: 'เกิดข้อผิดพลาดในการเพิ่ม Training Phrase'
+    });
+  }
 });
 
 /**
