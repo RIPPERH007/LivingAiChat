@@ -74,69 +74,51 @@ io.on('connection', (socket) => {
   // ทดสอบการเชื่อมต่อโดยส่งข้อความทดสอบไปยังไคลเอนต์ที่เพิ่งเชื่อมต่อ
   socket.emit('test', { message: 'Socket connection test from server', timestamp: Date.now() });
 
-  // รับการสมัครห้องแชท (เมื่อผู้ใช้หรือแอดมินเข้าร่วมห้อง)
-socket.on('join', (roomId) => {
-    console.log(`[${new Date().toISOString()}] [Socket] Client ${socket.id} joined room: ${roomId}`);
+  socket.on('join_all_rooms', () => {
+    console.log(`Admin client ${socket.id} requested to join all rooms`);
 
-    // เก็บห้องก่อนหน้าเพื่อออกจากห้องเก่า
-    const previousRooms = Object.keys(socket.rooms).filter(room => room !== socket.id);
+    // ดึงรายการห้องทั้งหมด
+    const allRooms = Object.keys(conversations);
 
-    // ออกจากห้องเก่าก่อนเข้าห้องใหม่ (optional)
-    previousRooms.forEach(room => {
-      console.log(`[${new Date().toISOString()}] [Socket] Leaving previous room: ${room}`);
-      socket.leave(room);
+    // เข้าร่วมทุกห้อง
+    allRooms.forEach(roomId => {
+      console.log(`Adding admin ${socket.id} to room ${roomId}`);
+      socket.join(roomId);
     });
 
-    // เข้าร่วมห้องใหม่
+    // แจ้งแอดมินว่าได้เข้าร่วมทุกห้อง
+    socket.emit('joined_all_rooms', {
+      roomCount: allRooms.length,
+      rooms: allRooms
+    });
+  });
+
+  // รับการสมัครห้องแชท (เมื่อผู้ใช้หรือแอดมินเข้าร่วมห้อง)
+  socket.on('join', (roomId) => {
+    if (!roomId) {
+      console.error('Invalid roomId in join request');
+      return;
+    }
+
+    console.log(`Client ${socket.id} joined room: ${roomId}`);
+
+    // เข้าร่วมห้อง
     socket.join(roomId);
 
     // แจ้งไคลเอนต์ว่าได้เข้าร่วมห้องแล้ว
     socket.emit('joined_room', { room: roomId, timestamp: Date.now() });
 
-    // ส่งข้อความแจ้งเตือนให้ทุกคนในห้องทราบว่ามีคนเข้ามา (optional)
-    socket.to(roomId).emit('room_notification', {
-      type: 'user_joined',
-      message: 'มีผู้ใช้เข้าร่วมห้องแชท',
-      timestamp: Date.now()
-    });
-  });
-  // รับการเปลี่ยนสถานะแอดมิน
-  socket.on('admin_status_change', (data) => {
-    console.log('Admin status change received:', data);
-
-    const { room: sessionId, adminActive, adminId, adminName } = data;
-
-    // ตรวจสอบความถูกต้องของข้อมูล
-    if (!sessionId) {
-      console.error('Invalid admin_status_change event: missing sessionId');
-      return;
+    // ตรวจสอบว่ามีข้อมูลการสนทนาหรือไม่
+    if (conversations[roomId]) {
+      // ส่งประวัติการสนทนาให้ผู้ที่เพิ่งเข้าร่วม
+      socket.emit('conversation_history', {
+        room: roomId,
+        messages: conversations[roomId].messages || [],
+        timestamp: Date.now()
+      });
+    } else {
+      console.log(`No conversation found for room ${roomId}`);
     }
-
-    // อัปเดตข้อมูลการสนทนาให้สอดคล้องกัน
-    if (conversations[sessionId]) {
-      conversations[sessionId].adminActive = adminActive;
-      conversations[sessionId].lastActivity = Date.now();
-
-      // ถ้าแอดมินแอคทีฟ ให้อัปเดตสถานะเป็น answered
-      if (adminActive) {
-        conversations[sessionId].status = 'answered';
-        conversations[sessionId].agentId = adminId;
-      }
-    }
-
-    // อัปเดตข้อมูล session
-    if (sessionData[sessionId]) {
-      sessionData[sessionId].adminActive = adminActive;
-    }
-
-    // ส่งข้อมูลการเปลี่ยนสถานะไปยังทุกคนที่อยู่ในห้อง
-    io.to(sessionId).emit('admin_status_change', data);
-  });
-
-  // รับเมื่อผู้ใช้ออกจากห้อง
-  socket.on('leave', (roomId) => {
-    console.log(`Client ${socket.id} left room: ${roomId}`);
-    socket.leave(roomId);
   });
 
   // รับข้อความจากผู้ใช้หรือแอดมิน
@@ -161,8 +143,8 @@ socket.on('join', (roomId) => {
         conversations[data.room].lastActivity = Date.now();
       }
 
-      // ส่งข้อความจากผู้ใช้ไปยังแอดมินเท่านั้น (ไม่ส่งกลับไปหาผู้ใช้)
-      socket.to(data.room).emit('new_message', data);
+      // ส่งข้อความให้ทุกคนในห้อง (แทนที่ socket.to เพื่อให้แน่ใจว่าข้อความถูกส่งไปยังทุกคน)
+      io.to(data.room).emit('new_message', data);
 
       // บันทึกข้อความลงในประวัติการสนทนา
       if (conversations[data.room]) {
@@ -172,10 +154,16 @@ socket.on('join', (roomId) => {
           timestamp: data.timestamp
         });
       }
+
+      // ถ้าไม่มีแอดมินที่แอคทีฟและเป็นข้อความจากผู้ใช้ ให้ส่งไปยัง Dialogflow
+      if (!isAdminActive) {
+        // ส่งข้อความไปยัง Dialogflow หรือบอทของคุณ
+        // ส่วนนี้ควรมีโค้ดสำหรับส่งข้อความไปยัง Dialogflow และรับการตอบกลับ
+      }
     } else if (data.sender === 'bot') {
       // ส่งข้อความของบอทเสมอ ไม่ว่าแอดมินจะแอคทีฟหรือไม่
       console.log('Sending bot message to room:', data.room);
-      socket.to(data.room).emit('new_message', data);
+      io.to(data.room).emit('new_message', data);
 
       // บันทึกข้อความบอทลงในประวัติการสนทนา
       if (conversations[data.room]) {
@@ -194,8 +182,8 @@ socket.on('join', (roomId) => {
         conversations[data.room].lastActivity = Date.now();
       }
 
-      // ส่งข้อความจากแอดมินไปหาผู้ใช้
-      socket.to(data.room).emit('new_message', data);
+      // ส่งข้อความจากแอดมินไปหาทุกคนในห้อง
+      io.to(data.room).emit('new_message', data);
 
       // บันทึกข้อความแอดมินลงในประวัติการสนทนา
       if (conversations[data.room]) {
@@ -215,214 +203,54 @@ socket.on('join', (roomId) => {
     }
   });
 
-  // รับการอัปเดตสถานะ
-  socket.on('status_update', (data) => {
-    console.log('Status update received:', data);
-    if (conversations[data.room]) {
-      conversations[data.room].status = data.status;
-      conversations[data.room].lastActivity = Date.now();
+  // รับการอัปเดตสถานะแอดมิน - แก้ไขโค้ดส่วนนี้เพื่อให้แน่ใจว่าฝั่งแอดมินได้รับข้อความจากลูกค้า
+  socket.on('admin_status_change', (data) => {
+    console.log('Admin status change received:', data);
+    const { room: sessionId, adminActive, adminId, adminName } = data;
+
+    // ตรวจสอบความถูกต้องของข้อมูล
+    if (!sessionId) {
+      console.error('Invalid admin_status_change event: missing sessionId');
+      return;
     }
-    socket.to(data.room).emit('status_update', data);
+
+    // อัปเดตข้อมูลการสนทนาให้สอดคล้องกัน
+    if (conversations[sessionId]) {
+      conversations[sessionId].adminActive = adminActive;
+      conversations[sessionId].lastActivity = Date.now();
+
+      // ถ้าแอดมินแอคทีฟ ให้อัปเดตสถานะเป็น answered
+      if (adminActive) {
+        conversations[sessionId].status = 'answered';
+        conversations[sessionId].agentId = adminId;
+      }
+
+      // บันทึกการเปลี่ยนสถานะแอดมินในประวัติการสนทนา
+      conversations[sessionId].messages.push({
+        sender: 'system',
+        text: adminActive ?
+              `${adminName || 'แอดมิน'} เข้ามาให้บริการในห้องแชทนี้` :
+              `${adminName || 'แอดมิน'} ออกจากห้องแชทนี้`,
+        timestamp: Date.now(),
+        adminStatus: adminActive
+      });
+    }
+
+    // อัปเดตข้อมูล session
+    if (sessionData[sessionId]) {
+      sessionData[sessionId].adminActive = adminActive;
+    }
+
+    // ส่งข้อมูลการเปลี่ยนสถานะไปยังทุกคนที่อยู่ในห้อง
+    io.to(sessionId).emit('admin_status_change', data);
   });
 
-  // รับการร้องขอค้นหาอสังหาริมทรัพย์
-socket.on('request_property_search', async (data) => {
-  try {
-    console.log('Property search requested:', data);
-    const { sessionId, searchData } = data;
+  // รับเมื่อผู้ใช้ออกจากห้อง
+  socket.on('leave', (roomId) => {
+    console.log(`Client ${socket.id} left room: ${roomId}`);
+    socket.leave(roomId);
+  });
 
-    // รวบรวมพารามิเตอร์การค้นหาจากข้อมูลที่มีอยู่
-    let searchParams = {};
-
-    if (sessionData[sessionId] && sessionData[sessionId].propertySearch) {
-      const propertySearch = sessionData[sessionId].propertySearch;
-
-      // แปลงข้อมูลเป็นพารามิเตอร์ API
-      if (propertySearch.buildingType) {
-        searchParams.buildingType = propertySearch.buildingType;
-      }
-
-      if (propertySearch.propertyType) {
-        searchParams.post_type = mapPropertyType(propertySearch.propertyType);
-      }
-
-      if (propertySearch.transactionType) {
-        searchParams.property_tag = mapTransactionType(propertySearch.transactionType);
-      }
-
-      if (propertySearch.price) {
-        searchParams.price = propertySearch.price;
-      }
-
-      if (propertySearch.location) {
-        searchParams.zone = propertySearch.location;
-      }
-
-      if (propertySearch.zoneId) {
-        searchParams.zoneId = propertySearch.zoneId;
-      }
-    }
-
-    // เพิ่มข้อมูลจาก searchData ที่ส่งมา (ถ้ามี)
-    if (searchData) {
-      Object.assign(searchParams, searchData);
-    }
-
-    console.log('Searching with params:', searchParams);
-
-    // สร้าง URL สำหรับเรียก API
-    let apiUrl = 'https://ownwebdev1.livinginsider.com/api/v1/test_order';
-
-    // เพิ่มพารามิเตอร์ค้นหา
-    const params = new URLSearchParams();
-    Object.keys(searchParams).forEach(key => {
-      if (searchParams[key]) {
-        params.append(key, searchParams[key]);
-      }
-    });
-
-    // ทำการเรียก API
-    const response = await axios.get(`${apiUrl}}`);
-    const propertyData = response.data;
-
-    // ถ้ามีข้อมูล ให้ส่งกลับไปแสดงผล
-    if (propertyData && propertyData.data && propertyData.data.length > 0) {
-      // แปลงข้อมูลให้เหมาะกับการแสดงผล
-      const properties = propertyData.data.map(item => ({
-        id: item.web_id ? item.web_id.toString() : '',
-        imageUrl: item.photo || '',
-        title: item.name || 'ไม่ระบุชื่อ',
-        location: item.zone || 'ไม่ระบุที่ตั้ง',
-        price: item.price ? formatPrice(item.price) : '-',
-        tag: item.tag || 'ขาย',
-        link: item.link || '#'
-      }));
-
-      // สร้าง rich content สำหรับแสดงผลในรูปแบบแถว 2 แถว
-      const richContent = [];
-      let currentRow = [];
-
-      // สร้างหัวข้อผลการค้นหา
-      richContent.push([
-        {
-          type: "info",
-          title: "ผลการค้นหาอสังหาริมทรัพย์",
-          subtitle: `พบทั้งหมด ${propertyData.count || properties.length} รายการ`
-        }
-      ]);
-
-      // สร้างแถวของการ์ดอสังหาริมทรัพย์
-      const propertiesRow = [];
-
-      // วนลูปเพิ่มแต่ละรายการ
-      properties.forEach(property => {
-        // สร้าง custom card layout ตามรูปแบบที่ต้องการ
-        propertiesRow.push({
-          type: "custom_card",
-          property_data: property
-        });
-      });
-
-      // เพิ่มแถวของอสังหาริมทรัพย์ทั้งหมด
-      richContent.push(propertiesRow);
-
-      // เพิ่มปุ่มดูเพิ่มเติม (ถ้ามี)
-      if (propertyData.more) {
-        richContent.push([
-          {
-            type: "button",
-            options: [
-              {
-                text: "ดูเพิ่มเติม",
-                link: propertyData.more.link || "#",
-                color: "primary"
-              }
-            ]
-          }
-        ]);
-      }
-
-      // สร้างข้อความและส่งผ่าน Socket.IO
-      const searchResultMessage = {
-        sender: 'bot',
-        intent: 'search_results',
-        timestamp: Date.now(),
-        room: sessionId,
-        payload: {
-          richContent: richContent
-        }
-      };
-
-      console.log('Sending search results to room:', sessionId);
-      io.to(sessionId).emit('new_message', searchResultMessage);
-
-      // ส่งผลลัพธ์กลับ
-      socket.emit('property_search_results', {
-        success: true,
-        data: {
-          data: properties,
-          count: propertyData.count || properties.length,
-          more: propertyData.more || null
-        }
-      });
-
-      // บันทึกข้อความการค้นหาลงในประวัติการสนทนา
-      if (conversations[sessionId]) {
-        conversations[sessionId].messages.push({
-          sender: 'bot',
-          intent: 'search_results',
-          timestamp: Date.now(),
-          payload: {
-            richContent: richContent
-          }
-        });
-      }
-    } else {
-      // ถ้าไม่พบข้อมูล
-      const noResultsPayload = {
-        richContent: [[
-          {
-            type: "info",
-            title: "ผลการค้นหาอสังหาริมทรัพย์",
-            subtitle: "ไม่พบข้อมูลที่ตรงกับการค้นหาของคุณ"
-          },
-          {
-            type: "chips",
-            options: [
-              {
-                text: "ค้นหาใหม่"
-              },
-              {
-                text: "ปรับเงื่อนไขการค้นหา"
-              }
-            ]
-          }
-        ]]
-      };
-
-      const noResultsMessage = {
-        sender: 'bot',
-        intent: 'search_results',
-        timestamp: Date.now(),
-        room: sessionId,
-        payload: noResultsPayload
-      };
-
-      io.to(sessionId).emit('new_message', noResultsMessage);
-
-      socket.emit('property_search_results', {
-        success: false,
-        message: 'ไม่พบข้อมูลที่ตรงกับการค้นหา'
-      });
-    }
-  } catch (error) {
-    console.error('Error processing property search:', error);
-    socket.emit('property_search_results', {
-      success: false,
-      message: 'เกิดข้อผิดพลาดในการค้นหา'
-    });
-  }
-});
   // ตัวจัดการเมื่อตัดการเชื่อมต่อ
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
@@ -1639,7 +1467,19 @@ app.post('/api/admin/add-training-phrase', async (req, res) => {
     });
   }
 });
+// เพิ่มใน server.js
+app.get('/api/socket-test', (req, res) => {
+  const testMessage = {
+    sender: 'system',
+    text: 'This is a test message from server',
+    timestamp: Date.now()
+  };
 
+  // ส่งข้อความไปยังทุกการเชื่อมต่อ
+  io.emit('new_message', testMessage);
+
+  res.json({ success: true, message: 'Test message sent to all clients' });
+});
 /**
  * เริ่มต้น server
  */

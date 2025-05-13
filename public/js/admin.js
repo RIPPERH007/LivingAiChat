@@ -683,102 +683,116 @@ function setupAdminStatusButton() {
     }
 
     // เปิดห้องแชท
+    // เปิดห้องแชท
+    function openChatSession(sessionId) {
+        console.log('Opening chat session for:', sessionId);
 
-// แก้ไขฟังก์ชัน openChatSession ให้เป็นแบบนี้
-function openChatSession(sessionId) {
-    console.log('Opening chat session for:', sessionId);
+        // บันทึก sessionId ปัจจุบัน
+        state.currentSessionId = sessionId;
 
-    // บันทึก sessionId ปัจจุบัน
-    state.currentSessionId = sessionId;
-
-    // แสดงหน้าต่างแชท
-    if (elements.chatPanel) {
-        elements.chatPanel.style.display = 'flex';
-    }
-
-    // เคลียร์ข้อความเก่า
-    if (elements.adminChatMessages) {
-        elements.adminChatMessages.innerHTML = '<div class="loading-message">กำลังโหลดข้อความ...</div>';
-    }
-
-    // ออกจากห้องเดิม (ถ้ามี) และเข้าร่วมห้องใหม่
-    if (state.socket) {
-        // ตรวจสอบสถานะการเชื่อมต่อ
-        if (!state.socket.connected) {
-            console.log('Socket not connected. Attempting to reconnect...');
-            connectSocket();
-
-            // ตั้งเวลารอให้เชื่อมต่อก่อนเข้าร่วมห้อง
-            setTimeout(() => {
-                if (state.socket && state.socket.connected) {
-                    console.log('Socket reconnected, joining room:', sessionId);
-                    state.socket.emit('join', sessionId);
-                }
-            }, 2000);
-        } else {
-            console.log('Socket connected, joining room:', sessionId);
-            state.socket.emit('join', sessionId);
+        // เก็บ sessionId ใน dataset ของ adminChatMessages
+        if (elements.adminChatMessages) {
+            elements.adminChatMessages.dataset.sessionId = sessionId;
         }
-    } else {
-        console.log('Socket not initialized. Attempting to connect...');
-        connectSocket();
 
-        // ตั้งเวลารอให้เชื่อมต่อก่อนเข้าร่วมห้อง
-        setTimeout(() => {
-            if (state.socket && state.socket.connected) {
-                console.log('Socket initialized, joining room:', sessionId);
-                state.socket.emit('join', sessionId);
+        // แสดงหน้าต่างแชท
+        if (elements.chatPanel) {
+            elements.chatPanel.style.display = 'flex';
+        }
+
+        // เคลียร์ข้อความเก่า
+        if (elements.adminChatMessages) {
+            elements.adminChatMessages.innerHTML = '<div class="loading-message">กำลังโหลดข้อความ...</div>';
+        }
+
+        console.log('Opening chat session for:', sessionId);
+
+          // เพิ่ม log เพื่อดู sessionId
+          console.log('Current session ID:', sessionId);
+
+
+          // แสดงหน้าต่างแชท
+          if (elements.chatPanel) {
+            elements.chatPanel.style.display = 'flex';
+          }
+
+          // IMPORTANT: เข้าร่วมห้องแชท
+          if (state.socket && state.socket.connected) {
+            console.log('Joining room:', sessionId);
+            state.socket.emit('join', sessionId);
+          } else {
+            console.error('Socket not connected! Cannot join room');
+            // ลองเชื่อมต่อใหม่
+            if (typeof connectSocket === 'function') {
+              connectSocket();
+              // รอให้เชื่อมต่อสำเร็จแล้วค่อยเข้าร่วมห้อง
+              setTimeout(() => {
+                if (state.socket && state.socket.connected) {
+                  console.log('Reconnected, now joining room:', sessionId);
+                  state.socket.emit('join', sessionId);
+                }
+              }, 1000);
             }
-        }, 2000);
+          }
+
+        // โหลดข้อมูลการสนทนา
+        window.adminAPI.fetchConversationDetails(sessionId)
+            .then(data => {
+                console.log('Conversation details:', data);
+
+                if (!data || !data.conversation) {
+                    console.error('No conversation data returned');
+                    if (elements.adminChatMessages) {
+                        elements.adminChatMessages.innerHTML = '<div class="error-message">ไม่พบข้อมูลการสนทนา</div>';
+                    }
+                    return;
+                }
+
+                const conversation = data.conversation;
+                const userInfo = data.sessionData?.userInfo || {};
+
+                // อัปเดตสถานะปัจจุบัน
+                state.currentStatus = conversation.status || 'waiting';
+                state.currentCustomer = userInfo.name || 'ไม่ระบุชื่อ';
+
+                // อัปเดตข้อมูลลูกค้าในแชทพาเนล
+                updateCustomerInfo(userInfo, conversation);
+
+                // โหลดประวัติการสนทนา
+                if (conversation.messages && conversation.messages.length > 0) {
+                    loadChatHistory(conversation.messages);
+                } else {
+                    if (elements.adminChatMessages) {
+                        elements.adminChatMessages.innerHTML = '<div class="empty-message">ยังไม่มีข้อความในการสนทนานี้</div>';
+                    }
+                }
+
+                // แสดงรายละเอียด session
+                updateSessionData(conversation);
+
+                // เพิ่มส่วนนี้เพื่อโหลดข้อมูลการค้นหาอสังหาริมทรัพย์
+                if (window.propertySearchModule) {
+                    window.propertySearchModule.loadSearchData(sessionId);
+                }
+
+                // อัพเดตสถานะแอดมิน
+                updateAdminStatus(conversation.adminActive || false);
+            })
+            .catch(error => {
+                console.error('Error fetching conversation details:', error);
+                if (elements.adminChatMessages) {
+                    elements.adminChatMessages.innerHTML = '<div class="error-message">เกิดข้อผิดพลาดในการโหลดข้อมูลการสนทนา</div>';
+                }
+            });
     }
 
-    // โหลดข้อมูลการสนทนา
-    window.adminAPI.fetchConversationDetails(sessionId)
-        .then(data => {
-            console.log('Conversation details:', data);
+    // อัพเดตสถานะแอดมิน
+    function updateAdminStatus(isActive) {
+        state.adminActive = isActive;
+        updateAdminStatusButton();
+    }
 
-            if (!data || !data.conversation) {
-                console.error('No conversation data returned');
-                if (elements.adminChatMessages) {
-                    elements.adminChatMessages.innerHTML = '<div class="error-message">ไม่พบข้อมูลการสนทนา</div>';
-                }
-                return;
-            }
-
-            const conversation = data.conversation;
-            const userInfo = data.sessionData?.userInfo || {};
-
-            // อัปเดตสถานะปัจจุบัน
-            state.currentStatus = conversation.status || 'waiting';
-            state.currentCustomer = userInfo.name || 'ไม่ระบุชื่อ';
-
-            // อัปเดตข้อมูลลูกค้าในแชทพาเนล
-            updateCustomerInfo(userInfo, conversation);
-
-            // โหลดประวัติการสนทนา
-            if (conversation.messages && conversation.messages.length > 0) {
-                loadChatHistory(conversation.messages);
-            } else {
-                if (elements.adminChatMessages) {
-                    elements.adminChatMessages.innerHTML = '<div class="empty-message">ยังไม่มีข้อความในการสนทนานี้</div>';
-                }
-            }
-
-            // แสดงรายละเอียด session
-            updateSessionData(conversation);
-
-            // เพิ่มส่วนนี้เพื่อโหลดข้อมูลการค้นหาอสังหาริมทรัพย์
-            if (window.propertySearchModule) {
-                window.propertySearchModule.loadSearchData(sessionId);
-            }
-        })
-        .catch(error => {
-            console.error('Error fetching conversation details:', error);
-            if (elements.adminChatMessages) {
-                elements.adminChatMessages.innerHTML = '<div class="error-message">เกิดข้อผิดพลาดในการโหลดข้อมูลการสนทนา</div>';
-            }
-        });
-}    // ปิดหน้าต่างแชท
+    // ปิดหน้าต่างแชท
     function closeChatPanel() {
         // ออกจากห้องแชท
         if (state.currentSessionId && state.socket && state.socket.connected) {
@@ -980,67 +994,385 @@ function startRealtimeUpdates() {
         elements.adminChatMessages.scrollTop = elements.adminChatMessages.scrollHeight;
     }
 
-    // โหลดประวัติการสนทนา
-// แก้ไขฟังก์ชัน loadChatHistory
-function loadChatHistory(messages) {
-    if (!elements.adminChatMessages) {
-        console.error('adminChatMessages element not found! Cannot load chat history.');
-        return;
-    }
+    function addBotMessageWithPayload(data) {
+        if (!elements.adminChatMessages) return;
 
-    if (!messages || !Array.isArray(messages)) {
-        console.error('Invalid messages data:', messages);
-        elements.adminChatMessages.innerHTML = '<div class="error-message">ข้อมูลประวัติการสนทนาไม่ถูกต้อง</div>';
-        return;
-    }
+        const timestamp = data.timestamp || Date.now();
 
-    console.log('Loading chat history, messages count:', messages.length);
-
-    // ล้างข้อความเก่า
-    elements.adminChatMessages.innerHTML = '';
-
-    if (messages.length === 0) {
-        elements.adminChatMessages.innerHTML = '<div class="empty-message">ยังไม่มีข้อความในการสนทนานี้</div>';
-        return;
-    }
-
-    // เพิ่มข้อความใหม่
-    messages.forEach((msg, index) => {
-        console.log(`Processing message ${index + 1}/${messages.length}:`, msg.sender, msg.text?.substring(0, 30));
-
-        if (!msg.sender || !msg.timestamp) {
-            console.warn('Invalid message format, missing sender or timestamp:', msg);
+        // ตรวจสอบว่ามีข้อความนี้อยู่แล้วหรือไม่
+        if (isMessageDuplicate(timestamp)) {
+            console.log('Duplicate bot message with payload, not adding');
             return;
         }
 
         const messageDiv = document.createElement('div');
-        messageDiv.className = `message ${msg.sender}-message`;
-        messageDiv.setAttribute('data-message-id', msg.timestamp);
-        messageDiv.setAttribute('data-index', index);
+        messageDiv.className = 'message bot';
+        messageDiv.setAttribute('data-message-id', timestamp);
 
-        const msgDate = new Date(msg.timestamp);
-        const timeFormatted = `${('0' + msgDate.getDate()).slice(-2)} ${getMonthAbbr(msgDate.getMonth())} ${('0' + msgDate.getHours()).slice(-2)}:${('0' + msgDate.getMinutes()).slice(-2)}`;
+        const now = new Date(timestamp);
+        const timeFormatted = `${('0' + now.getDate()).slice(-2)} ${getMonthAbbr(now.getMonth())} ${('0' + now.getHours()).slice(-2)}:${('0' + now.getMinutes()).slice(-2)}`;
 
-        // แสดงชื่อผู้ส่งถ้าเป็นข้อความจากแอดมิน
-        const senderInfo = msg.sender === 'admin' && msg.adminName ? `<small>${escapeHTML(msg.adminName)}</small>` : '';
+        // ตรวจสอบว่ามี payload และมี richContent หรือไม่
+        let richContentHtml = '';
+        if (data.payload && data.payload.richContent) {
+            richContentHtml = processRichContent(data.payload);
+        }
 
-        const messageText = msg.text || '(ไม่มีข้อความ)';
-
+        // ถ้ามีทั้ง text และ richContent ให้แสดงทั้งคู่
         messageDiv.innerHTML = `
-            <div class="message-content${msg.sender === 'admin' ? ' admin-message' : ''}">
-                <p>${escapeHTML(messageText)}</p>
-                ${senderInfo}
+            <div class="message-content">
+                ${data.text ? `<p>${escapeHTML(data.text)}</p>` : ''}
+                ${richContentHtml}
             </div>
             <div class="message-time">${timeFormatted}</div>
         `;
 
         elements.adminChatMessages.appendChild(messageDiv);
-    });
 
-    // เลื่อนไปที่ข้อความล่าสุด
-    elements.adminChatMessages.scrollTop = elements.adminChatMessages.scrollHeight;
-    console.log('Chat history loaded successfully');
-}
+        // เพิ่ม event listeners สำหรับองค์ประกอบ interactive ใน rich content
+        if (richContentHtml) {
+            addInteractiveListeners(messageDiv);
+        }
+
+        // เลื่อนไปที่ข้อความล่าสุด
+        elements.adminChatMessages.scrollTop = elements.adminChatMessages.scrollHeight;
+    }
+
+    function processRichContent(payload) {
+        if (!payload.richContent || payload.richContent.length === 0) return '';
+
+        const richContent = payload.richContent[0];
+        let richContentHTML = '';
+
+        // ประมวลผลแต่ละประเภทของ Rich Content
+        richContent.forEach(item => {
+            console.log('Processing rich content item:', item);
+
+            switch (item.type) {
+                case 'property_list':
+                    richContentHTML += renderPropertyList(item.properties);
+                    break;
+                case 'info':
+                    richContentHTML += renderInfoCard(item);
+                    break;
+                case 'chips':
+                    richContentHTML += renderChips(item);
+                    break;
+                case 'image':
+                    richContentHTML += renderImage(item.image ? item.image.src : item);
+                    break;
+                case 'button':
+                    richContentHTML += renderButton(item);
+                    break;
+                case 'list':
+                    richContentHTML += renderList(item);
+                    break;
+                case 'custom_card':
+                    richContentHTML += renderPropertyCard(item.property_data);
+                    break;
+                default:
+                    console.log('Unknown rich content type:', item.type);
+            }
+        });
+
+        return richContentHTML;
+    }
+
+    // ฟังก์ชันย่อยสำหรับการแสดงผล Rich Content
+    function renderInfoCard(item) {
+        return `
+            <div class="rich-content info-card">
+                <h4>${escapeHTML(item.title || '')}</h4>
+                <p>${escapeHTML(item.subtitle || '')}</p>
+            </div>
+        `;
+    }
+
+    function renderChips(item) {
+        return `
+            <div class="rich-content chips-container">
+                ${item.options.map(option => `
+                    <div class="chip" data-text="${escapeHTML(option.text)}">
+                        ${escapeHTML(option.text)}
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    function renderImage(item) {
+        return `
+        <div class="rich-content image-container">
+            <img src="${escapeHTML(item.rawUrl)}"
+                 alt="${escapeHTML(item.accessibilityText || 'Image')}"
+                 data-text="${escapeHTML(item.title || item.accessibilityText || 'Image')}"
+                 style="max-width:100%; cursor: pointer;">
+        </div>
+    `;
+    }
+
+    function renderButton(item) {
+        // ตรวจสอบว่ามีโครงสร้างแบบใหม่ (มี options array) หรือไม่
+        if (item.options && Array.isArray(item.options)) {
+            return `
+                <div class="rich-content button-container">
+                    ${item.options.map(option => {
+                        // ตรวจสอบว่ามี icon และ color หรือไม่
+                        const icon = option.icon ? `<i class="fa-solid fa-${escapeHTML(option.icon)}"></i>` : '';
+                        const colorClass = option.color ? `chat-btn-${escapeHTML(option.color)}` : 'chat-btn-primary';
+                        const buttonText = option.text || "Button";
+
+                        return `
+                            <button class="chat-btn ${colorClass}" data-text="${escapeHTML(buttonText)}">
+                                ${icon} ${escapeHTML(buttonText)}
+                            </button>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+        }
+        // โครงสร้างแบบเดิม (มี text โดยตรง)
+        else {
+            // ตรวจสอบว่ามี icon และ color หรือไม่
+            const icon = item.icon ? `<i class="fa-solid fa-${escapeHTML(item.icon)}"></i>` : '';
+            const colorClass = item.color ? `chat-btn-${escapeHTML(item.color)}` : 'chat-btn-primary';
+            const buttonText = item.text || "Button";
+
+            return `
+                <div class="rich-content button-container">
+                    <button class="chat-btn ${colorClass}" data-text="${escapeHTML(buttonText)}">
+                        ${icon} ${escapeHTML(buttonText)}
+                    </button>
+                </div>
+            `;
+        }
+    }
+
+    function renderList(item) {
+        return `
+            <div class="rich-content list-container">
+                ${item.items.map(listItem => `
+                    <div class="list-item" data-text="${escapeHTML(listItem.title)}">
+                        <div class="list-item-content">
+                            <div class="list-item-title">${escapeHTML(listItem.title || '')}</div>
+                            <div class="list-item-subtitle">${escapeHTML(listItem.subtitle || '')}</div>
+                        </div>
+                        <div class="list-item-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M9 18l6-6-6-6"/>
+                            </svg>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    function renderPropertyList(properties) {
+        return `
+            <div class="property-list">
+                ${properties.map(property => {
+                    // จัดการวันที่ (ถ้ามี)
+                    const dateDisplay = property.date ? property.date : '';
+                    // จัดการจำนวนการดู (ถ้ามี)
+                    const viewsDisplay = property.views ? property.views : '';
+                    // สร้างข้อความสำหรับส่งเมื่อคลิก
+                    const clickText = `ขอดูรายละเอียดของอสังหาริมทรัพย์ ${property.id}`;
+
+                    return `
+                        <div class="property-card" data-property-id="${property.id}" data-text="${escapeHTML(clickText)}">
+                            <div class="property-image">
+                                <img src="${property.imageUrl}" alt="${property.title}">
+                                <div class="property-badge">${property.tag || 'ขาย'}</div>
+                                ${(dateDisplay || viewsDisplay) ? `
+                                <div class="property-date-views">
+                                    ${dateDisplay ? `<div class="property-date">${dateDisplay}</div>` : ''}
+                                    ${viewsDisplay ? `
+                                    <div class="property-views">
+                                        <i class="fa-solid fa-eye"></i> ${viewsDisplay}
+                                    </div>
+                                    ` : ''}
+                                </div>
+                                ` : ''}
+                            </div>
+                            <div class="property-info">
+                                <div class="property-price">฿${property.price || '0'}</div>
+                                <div class="property-title">${property.title || 'ไม่ระบุชื่อ'}</div>
+                                <div class="property-location">
+                                    <i class="fa-solid fa-location-dot"></i> ${property.location || 'ไม่ระบุที่ตั้ง'}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    }
+
+    function renderPropertyCard(property) {
+        // กำหนดประเภทธุรกรรม (เช่า หรือ ขาย)
+        const isRent = property.tag && property.tag.toLowerCase().includes('เช่า');
+        const tagText = isRent ? 'เช่า' : 'ขาย';
+
+        // กำหนดรูปภาพ
+        const imageUrl = property.imageUrl || 'assets/images/property-placeholder.jpg';
+
+        // กำหนดลิงก์
+        const link = property.link || '#';
+
+        // จากรูปต้นแบบ มีการใช้ชื่อที่สั้นกระชับ
+        const propertyName = (property.building || property.title || 'คอนโดมิเนียม');
+
+        // สร้าง HTML แบบเหมือนต้นแบบทุกประการ
+        return `
+            <div class="li-property-card" onclick="window.open('${link}', '_blank')">
+            <div class="li-property-left">
+                <img src="${imageUrl}" alt="${property.title || 'อสังหาริมทรัพย์'}">
+            </div>
+            <div class="li-property-right">
+                <div class="li-property-badge">
+                <i class="fas fa-building"></i> ${tagText}
+                </div>
+                <div class="li-property-title">${tagText} ${propertyName}</div>
+                <div class="li-property-code">${property.id || ''}</div>
+                <div class="li-property-location">
+                <i class="fas fa-map-marker-alt"></i> ${property.location || 'ที่ตั้ง'}
+                </div>
+                <div class="li-property-price">฿${property.price || '-'}</div>
+            </div>
+            </div>
+        `;
+    }
+
+    // เพิ่ม Event Listeners สำหรับองค์ประกอบแบบโต้ตอบ
+    function addInteractiveListeners(richContentElement) {
+        // ปุ่มและ chips
+        const chips = richContentElement.querySelectorAll('.chip');
+        chips.forEach(chip => {
+            chip.addEventListener('click', function() {
+                const clickText = this.dataset.text;
+                if (clickText) {
+                    console.log('Chip clicked, text:', clickText);
+                    sendAdminMessage(clickText);
+                }
+            });
+        });
+
+        // ปุ่ม
+        const buttons = richContentElement.querySelectorAll('.chat-btn');
+        buttons.forEach(button => {
+            button.addEventListener('click', function() {
+                const clickText = this.dataset.text;
+                if (clickText) {
+                    console.log('Button clicked, text:', clickText);
+                    sendAdminMessage(clickText);
+                }
+            });
+        });
+
+        // Property Cards
+        const propertyCards = richContentElement.querySelectorAll('.property-card, .li-property-card');
+        propertyCards.forEach(card => {
+            card.addEventListener('click', function() {
+                const link = this.getAttribute('onclick');
+                if (link && link.includes('window.open')) {
+                    const url = link.match(/'([^']+)'/)[1];
+                    if (url && url !== '#') {
+                        window.open(url, '_blank');
+                    }
+                }
+            });
+        });
+    }
+
+    // ส่งข้อความจากแอดมินผ่าน interactive elements
+    function sendAdminMessage(text) {
+        if (!elements.adminChatInput) return;
+
+        // เพิ่มข้อความลงในช่องข้อความ
+        elements.adminChatInput.value = text;
+
+        // ส่งข้อความ
+        sendMessage();
+    }
+
+    // โหลดประวัติการสนทนา
+    function loadChatHistory(messages) {
+        if (!elements.adminChatMessages) {
+            console.error('adminChatMessages element not found! Cannot load chat history.');
+            return;
+        }
+
+        if (!messages || !Array.isArray(messages)) {
+            console.error('Invalid messages data:', messages);
+            elements.adminChatMessages.innerHTML = '<div class="error-message">ข้อมูลประวัติการสนทนาไม่ถูกต้อง</div>';
+            return;
+        }
+
+        console.log('Loading chat history, messages count:', messages.length);
+
+        // ล้างข้อความเก่า
+        elements.adminChatMessages.innerHTML = '';
+
+        if (messages.length === 0) {
+            elements.adminChatMessages.innerHTML = '<div class="empty-message">ยังไม่มีข้อความในการสนทนานี้</div>';
+            return;
+        }
+
+        // เพิ่มข้อความใหม่
+        messages.forEach((msg, index) => {
+            console.log(`Processing message ${index + 1}/${messages.length}:`, msg.sender, msg.text?.substring(0, 30));
+
+            if (!msg.sender || !msg.timestamp) {
+                console.warn('Invalid message format, missing sender or timestamp:', msg);
+                return;
+            }
+
+            // ตรวจสอบว่ามี payload หรือไม่
+            if (msg.sender === 'bot' && msg.payload) {
+                // กรณี bot message พร้อม payload
+                const botMessageWithPayload = {
+                    sender: 'bot',
+                    text: msg.text || '',
+                    timestamp: msg.timestamp,
+                    payload: msg.payload,
+                    intent: msg.intent || '',
+                    room: state.currentSessionId
+                };
+
+                addBotMessageWithPayload(botMessageWithPayload);
+            } else {
+                // กรณีข้อความปกติ
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${msg.sender}-message`;
+                messageDiv.setAttribute('data-message-id', msg.timestamp);
+                messageDiv.setAttribute('data-index', index);
+
+                const msgDate = new Date(msg.timestamp);
+                const timeFormatted = `${('0' + msgDate.getDate()).slice(-2)} ${getMonthAbbr(msgDate.getMonth())} ${('0' + msgDate.getHours()).slice(-2)}:${('0' + msgDate.getMinutes()).slice(-2)}`;
+
+                // แสดงชื่อผู้ส่งถ้าเป็นข้อความจากแอดมิน
+                const senderInfo = msg.sender === 'admin' && msg.adminName ? `<small>${escapeHTML(msg.adminName)}</small>` : '';
+
+                const messageText = msg.text || '(ไม่มีข้อความ)';
+
+                messageDiv.innerHTML = `
+                    <div class="message-content${msg.sender === 'admin' ? ' admin-message' : ''}">
+                        <p>${escapeHTML(messageText)}</p>
+                        ${senderInfo}
+                    </div>
+                    <div class="message-time">${timeFormatted}</div>
+                `;
+
+                elements.adminChatMessages.appendChild(messageDiv);
+            }
+        });
+
+        // เลื่อนไปที่ข้อความล่าสุด
+        elements.adminChatMessages.scrollTop = elements.adminChatMessages.scrollHeight;
+        console.log('Chat history loaded successfully');
+    }
+
     // อัปเดตการแสดงสถานะ
     function updateStatusDisplay(status) {
         if (!elements.detailStatus) return;

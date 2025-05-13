@@ -10,6 +10,7 @@
 
 </head>
 <body>
+
 <div class="admin-container">
     <!-- Sidebar -->
     <div class="sidebar">
@@ -782,6 +783,124 @@
         alert('Property search module not found!');
       }
     });
+</script>
+
+<!-- นำเข้า Script ปรับปรุงการแสดงผล Rich Content -->
+<script src="js/admin-chat-enhancer.js"></script>
+
+<!-- เพิ่ม Debugging Code -->
+<script>
+    // ตรวจสอบและแสดงสถานะการเชื่อมต่อ Socket.IO เพิ่มเติม
+    (function() {
+      // รอให้ socket ถูกสร้างแล้วค่อยทำงาน
+      function checkSocketStatus() {
+        // ตรวจสอบว่ามีตัวแปร socket global หรือไม่
+        if (window.io) {
+          console.log('Socket.IO library loaded');
+
+          // แสดงข้อมูลการเชื่อมต่อ
+          if (window.socket) {
+            console.log('Socket instance exists:', window.socket.id);
+            console.log('Socket connected:', window.socket.connected);
+
+            // แสดงรายการ event listeners
+            console.log('Socket has these event handlers:', Object.keys(window.socket._callbacks || {}).map(k => k.substring(1)));
+          } else {
+            console.warn('Socket.IO instance not found in window.socket');
+          }
+        } else {
+          console.error('Socket.IO library not loaded!');
+        }
+      }
+
+      // รอสักครู่ให้หน้าเว็บโหลดเสร็จ
+      setTimeout(checkSocketStatus, 3000);
+
+      // ฟังก์ชันสำหรับการตรวจสอบการเชื่อมต่อ Socket.IO เป็นระยะ
+      function setupSocketConnectionCheck() {
+        setInterval(function() {
+          if (window.socket) {
+            const statusElement = document.getElementById('socket-status');
+
+            if (window.socket.connected) {
+              console.log('Socket connection check: Connected');
+              if (statusElement) {
+                statusElement.textContent = 'Connected';
+                statusElement.className = 'socket-status connected';
+              }
+            } else {
+              console.warn('Socket connection check: Disconnected');
+              if (statusElement) {
+                statusElement.textContent = 'Disconnected';
+                statusElement.className = 'socket-status disconnected';
+              }
+
+              // พยายามเชื่อมต่อใหม่
+              if (typeof window.connectSocket === 'function') {
+                console.log('Attempting to reconnect...');
+                window.connectSocket();
+              }
+            }
+          }
+        }, 10000); // ตรวจสอบทุก 10 วินาที
+      }
+
+      // รันฟังก์ชันตรวจสอบเป็นระยะ
+      setTimeout(setupSocketConnectionCheck, 5000);
+
+      // เพิ่มการตรวจสอบเพื่อดู Socket Events
+      function monitorSocketEvents() {
+        if (window.socket) {
+          const originalOn = window.socket.on;
+
+          // เพิ่ม logging เมื่อมีการลงทะเบียน event
+          window.socket.on = function(event, handler) {
+            console.log(`Registering socket handler for event: ${event}`);
+            return originalOn.call(this, event, function(...args) {
+              console.log(`Received socket event: ${event}`, args);
+              return handler.apply(this, args);
+            });
+          };
+
+          // ลงทะเบียน handler เพิ่มเติมสำหรับเหตุการณ์ new_message
+          originalOn.call(window.socket, 'new_message', function(data) {
+            console.log('Debug: new_message event received directly:', data);
+
+            // ถ้ามีฟังก์ชัน handleIncomingMessage ให้เรียกใช้
+            if (window.handleIncomingMessage) {
+              window.handleIncomingMessage(data);
+            }
+          });
+
+          console.log('Socket event monitoring setup complete');
+        } else {
+          console.warn('Could not setup socket event monitoring - socket not available');
+
+          // ลองใหม่ในอีก 2 วินาที
+          setTimeout(monitorSocketEvents, 2000);
+        }
+      }
+
+      // เริ่มการตรวจสอบ socket events
+      setTimeout(monitorSocketEvents, 2000);
+    })();
+</script>
+
+<!-- Add Emergency Fix Script -->
+<script src="js/admin-fix.js"></script>
+<script>
+    // แสดงสถานะเวอร์ชันของการแก้ไข
+    console.log('Admin dashboard emergency fix v1.0 loaded');
+
+    // ตรวจสอบข้อมูลการเชื่อมต่อและอาร์เรย์ conversations ทุก 3 วินาที
+    setInterval(function() {
+      fetch('/api/conversations')
+        .then(response => response.json())
+        .then(data => {
+          console.log('Conversations count:', data.conversations ? data.conversations.length : 0);
+        })
+        .catch(error => console.error('Error checking conversations:', error));
+    }, 3000);
 </script>
 </body>
 </html>
