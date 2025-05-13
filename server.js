@@ -1480,6 +1480,10 @@ app.get('/api/socket-test', (req, res) => {
 
   res.json({ success: true, message: 'Test message sent to all clients' });
 });
+
+app.get('/admin-new', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public/admin-new.html'));
+});
 /**
  * เริ่มต้น server
  */
@@ -1488,167 +1492,170 @@ server.listen(PORT, () => {
   console.log(`Server กำลังทำงานที่พอร์ต ${PORT}`);
 });
     async function searchPropertiesAndSendResponse(sessionId) {
-  if (!sessionId || !sessionData[sessionId]) {
-    console.error(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Cannot search: Session data not found`);
-    return;
-  }
-
-  try {
-    // Log สถานะก่อนเริ่มค้นหา
-    console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Starting property search...`);
-
-    // ดึงข้อมูลการค้นหาจาก session
-    const searchData = sessionData[sessionId].propertySearch;
-    console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Search data:`,
-      JSON.stringify(searchData, null, 2));
-
-    // แปลงข้อมูลเป็นพารามิเตอร์สำหรับ API
-    let searchParams = {};
-
-    // แปลงข้อมูลการค้นหาเป็นพารามิเตอร์ API
-    if (searchData.transaction_type) {
-      searchParams.transaction_type = searchData.transaction_type;
-      console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Using transaction_type: ${searchData.transaction_type}`);
+   if (!sessionId || !sessionData[sessionId]) {
+      console.error(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Cannot search: Session data not found`);
+      return;
     }
 
-    if (searchData.building_type) {
-      const mappedType = mapPropertyType(searchData.building_type);
-      if (mappedType !== null) {
-        searchParams.post_type = mappedType;
-        console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Mapping building_type: "${searchData.building_type}" -> ${mappedType}`);
+    try {
+      // Log สถานะก่อนเริ่มค้นหา
+      console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Starting property search...`);
+
+      // ดึงข้อมูลการค้นหาจาก session
+      const searchData = sessionData[sessionId].propertySearch;
+      console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Search data:`,
+        JSON.stringify(searchData, null, 2));
+
+      // แปลงข้อมูลเป็นพารามิเตอร์สำหรับ API
+      let searchParams = {};
+
+      // แปลงข้อมูลการค้นหาเป็นพารามิเตอร์ API
+      if (searchData.transaction_type) {
+        // เปลี่ยนจาก transaction_type เป็น post_type
+        searchParams.post_type = searchData.transaction_type;
+        console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Using post_type: ${searchData.transaction_type}`);
       }
-    }
 
-    if (searchData.location) {
-      searchParams.keyword = searchData.location;
-      console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Using location: ${searchData.location}`);
-    }
-
-    if (searchData.price) {
-      // ตรวจสอบว่าราคาเป็นข้อความค้นหาหรือไม่
-      if (searchData.price.includes('ค้นหา') ||
-          searchData.price.includes('หา') ||
-          searchData.price.includes('search')) {
-        // ใช้ค่าราคาเริ่มต้น
-        searchParams.price = "1"; // หรือค่าเริ่มต้นที่เหมาะสม
-      } else {
-        searchParams.price = searchData.price;
+      if (searchData.building_type) {
+        const mappedType = mapPropertyType(searchData.building_type);
+        if (mappedType !== null) {
+          // ใช้ค่า property_tag แทน post_type
+          searchParams.property_tag = mappedType;
+          console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Mapping building_type: "${searchData.building_type}" -> ${mappedType}`);
+        }
       }
-      console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Using price: ${searchParams.price}`);
-    }
 
-    console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Final search parameters:`,
-      JSON.stringify(searchParams, null, 2));
-
-    // สร้าง URL สำหรับเรียก API
-    const apiUrl = 'https://ownwebdev1.livinginsider.com/api/v1/chat_prop_listing2';
-
-    // สร้าง URL params
-    const params = new URLSearchParams();
-    Object.keys(searchParams).forEach(key => {
-      if (searchParams[key]) {
-        params.append(key, searchParams[key]);
+      if (searchData.location) {
+        searchParams.keyword = searchData.location;
+        console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Using location: ${searchData.location}`);
       }
-    });
 
-    // เรียกใช้ API
-    const fullUrl = `${apiUrl}?${params.toString()}`;
-    console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Final API URL: ${fullUrl}`);
-
-    // ส่งคำขอ API
-    console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Calling API...`);
-
-    // ใช้ axios.get พร้อม URL ที่สร้างขึ้น
-    const response = await axios.get(fullUrl, {
-      timeout: 10000,
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
+      if (searchData.price) {
+        // ตรวจสอบว่าราคาเป็นข้อความค้นหาหรือไม่
+        if (searchData.price.includes('ค้นหา') ||
+            searchData.price.includes('หา') ||
+            searchData.price.includes('search')) {
+          // ใช้ค่าราคาเริ่มต้น
+          searchParams.price = "1"; // หรือค่าเริ่มต้นที่เหมาะสม
+        } else {
+          searchParams.price = searchData.price;
+        }
+        console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Using price: ${searchParams.price}`);
       }
-    });
 
-    console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] API response status: ${response.status}`);
-    const responseData = response.data;
+      console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Final search parameters:`,
+        JSON.stringify(searchParams, null, 2));
 
-    // ตรวจสอบว่ามีข้อมูลหรือไม่
-    if (responseData && responseData.data && responseData.data.length > 0) {
-      console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Found ${responseData.data.length} properties`);
+      // สร้าง URL สำหรับเรียก API
+      const apiUrl = 'https://ownwebdev1.livinginsider.com/api/v1/chat_prop_listing2';
 
-      // แปลงข้อมูลจาก API ให้อยู่ในรูปแบบที่ต้องการแสดงผล
-      const properties = responseData.data.map((item, index) => {
-        return {
-          id: item.web_id || `prop-${index}`,
-          imageUrl: item.photo || 'assets/images/property-placeholder.jpg',
-          title: item.name || 'ไม่ระบุชื่อ',
-          location: item.zone_name || 'ไม่ระบุที่ตั้ง',
-          price: item.price || '-',
-          tag: item.tag || (searchData.transaction_type === 'เช่า' ? 'เช่า' : 'ขาย'),
-          link: item.link || '#',
-          building: item.building || '',
-          project_name: item.project_name || 'ไม่ระบุ'
-        };
+      // สร้าง URL params
+      const params = new URLSearchParams();
+      Object.keys(searchParams).forEach(key => {
+        if (searchParams[key]) {
+          params.append(key, searchParams[key]);
+        }
       });
 
-      // สร้าง summary text ตามข้อมูลการค้นหา
-      let summaryText = 'ผลการค้นหาอสังหาริมทรัพย์';
-      if (searchData.transaction_type) {
-        summaryText += ` สำหรับ${searchData.transaction_type}`;
-      }
-      if (searchData.building_type) {
-        summaryText += ` ประเภท${searchData.building_type}`;
-      }
-      if (searchData.location) {
-        summaryText += ` บริเวณ${searchData.location}`;
-      }
-      if (searchData.price) {
-        summaryText += ` ในช่วงราคา${searchData.price}`;
-      }
+      // เรียกใช้ API
+      const fullUrl = `${apiUrl}?${params.toString()}`;
+      console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Final API URL: ${fullUrl}`);
 
-      // สร้าง property_list สำหรับแสดงผลใน rich content
-      const propertyListItems = properties.slice(0, 5).map(property => ({
-        type: "custom_card",
-        property_data: property
-      }));
+      // ส่งคำขอ API
+      console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Calling API...`);
 
-      // สร้าง rich content
-      const richContent = [
-        [
-          {
-            type: "info",
-            title: summaryText,
-            subtitle: `พบทั้งหมด ${responseData.count || properties.length} รายการ`
-          },
-          ...propertyListItems
-        ]
-      ];
-
-      // ส่งข้อความผ่าน Socket.IO
-      const searchResultMessage = {
-        sender: 'bot',
-        intent: 'search_results',
-        timestamp: Date.now(),
-        room: sessionId,
-        text: responseData.sms || `พบอสังหาริมทรัพย์ทั้งหมด ${properties.length} รายการ`,
-        payload: {
-          richContent: richContent
+      // ใช้ axios.get พร้อม URL ที่สร้างขึ้น
+      const response = await axios.get(fullUrl, {
+        timeout: 10000,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
         }
-      };
+      });
 
-      console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Sending search results message`);
-      io.to(sessionId).emit('new_message', searchResultMessage);
+      console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] API response status: ${response.status}`);
+      const responseData = response.data;
 
-      // บันทึกข้อความในประวัติการสนทนา
-      if (conversations[sessionId]) {
-        conversations[sessionId].messages.push({
+      // ตรวจสอบว่ามีข้อมูลหรือไม่
+      if (responseData && responseData.data && responseData.data.length > 0) {
+        console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Found ${responseData.data.length} properties`);
+
+        // แปลงข้อมูลจาก API ให้อยู่ในรูปแบบที่ต้องการแสดงผล
+        const properties = responseData.data.map((item, index) => {
+          return {
+            id: item.web_id || `prop-${index}`,
+            imageUrl: item.photo || 'assets/images/property-placeholder.jpg',
+            title: item.name || 'ไม่ระบุชื่อ',
+            location: item.zone_name || 'ไม่ระบุที่ตั้ง',
+            price: item.price || '-',
+            tag: item.tag || (searchData.transaction_type === 'เช่า' ? 'เช่า' : 'ขาย'),
+            link: item.link || '#',
+            building: item.building || '',
+            project_name: item.project_name || 'ไม่ระบุ'
+          };
+        });
+
+        // ต่อโค้ดเหมือนของเดิม...
+        // สร้าง summary text ตามข้อมูลการค้นหา
+        let summaryText = 'ผลการค้นหาอสังหาริมทรัพย์';
+        if (searchData.transaction_type) {
+          summaryText += ` สำหรับ${searchData.transaction_type}`;
+        }
+        if (searchData.building_type) {
+          summaryText += ` ประเภท${searchData.building_type}`;
+        }
+        if (searchData.location) {
+          summaryText += ` บริเวณ${searchData.location}`;
+        }
+        if (searchData.price) {
+          summaryText += ` ในช่วงราคา${searchData.price}`;
+        }
+
+        // สร้าง property_list สำหรับแสดงผลใน rich content
+        const propertyListItems = properties.slice(0, 5).map(property => ({
+          type: "custom_card",
+          property_data: property
+        }));
+
+        // สร้าง rich content
+        const richContent = [
+          [
+            {
+              type: "info",
+              title: summaryText,
+              subtitle: `พบทั้งหมด ${responseData.count || properties.length} รายการ`
+            },
+            ...propertyListItems
+          ]
+        ];
+
+        // ส่งข้อความผ่าน Socket.IO
+        const searchResultMessage = {
           sender: 'bot',
           intent: 'search_results',
           timestamp: Date.now(),
+          room: sessionId,
           text: responseData.sms || `พบอสังหาริมทรัพย์ทั้งหมด ${properties.length} รายการ`,
           payload: {
             richContent: richContent
           }
-        });
-      }
+        };
+
+        console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Sending search results message`);
+        io.to(sessionId).emit('new_message', searchResultMessage);
+
+        // บันทึกข้อความในประวัติการสนทนา
+        if (conversations[sessionId]) {
+          conversations[sessionId].messages.push({
+            sender: 'bot',
+            intent: 'search_results',
+            timestamp: Date.now(),
+            text: responseData.sms || `พบอสังหาริมทรัพย์ทั้งหมด ${properties.length} รายการ`,
+            payload: {
+              richContent: richContent
+            }
+          });
+        }
 
       // เพิ่มการส่งข้อความปุ่มเพิ่มเติมถ้ามี more link
       if (responseData.more && responseData.more.link) {
