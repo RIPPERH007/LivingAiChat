@@ -963,14 +963,25 @@ function renderConversationList() {
 
 // เปิดห้องแชท
 function openChatSession(sessionId) {
+  function openChatSession(sessionId) {
   console.log('เปิดห้องแชท:', sessionId);
 
   // ดึงข้อมูลห้องแชทจาก state
   const conversation = adminState.conversations[sessionId];
   if (!conversation) {
     console.error('ไม่พบข้อมูลการสนทนา:', sessionId);
+    showNotification('ไม่พบข้อมูลการสนทนา กำลังโหลดใหม่...', 'error');
+
+    // พยายามโหลดข้อมูลใหม่ก่อนเปิดห้องแชท
+    loadConversations().then(() => {
+      // ตรวจสอบอีกครั้งหลังโหลดข้อมูลใหม่
+      if (adminState.conversations[sessionId]) {
+        openChatSession(sessionId); // เรียกตัวเองอีกครั้งหลังโหลดข้อมูลใหม่
+      }
+    });
     return;
   }
+
 
   const roomId = conversation.roomId || sessionId;
   const webId = conversation.webId || adminState.currentWebId;
@@ -1035,7 +1046,11 @@ function openChatSession(sessionId) {
 
 // แสดงประวัติการสนทนา
 function displayChatHistory(messages) {
-  elements.adminChatMessages.innerHTML = '';
+
+  if (!messages || messages.length === 0) {
+    elements.adminChatMessages.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">ยังไม่มีข้อความในการสนทนานี้</div>';
+    return;
+  }
 
   messages.forEach(msg => {
     // แปลงข้อมูลให้ตรงกับรูปแบบที่ใช้ในฟังก์ชัน addMessageToChat

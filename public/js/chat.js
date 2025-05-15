@@ -349,15 +349,25 @@ function updateAdminStatusDisplay(isActive, adminName) {
         const messageId = Date.now();
         addMessage('user', clickText, '', messageId);
 
-        // เพิ่มบรรทัดนี้: ส่งข้อความไปยัง API ใหม่
+        // ส่งข้อความไปยัง API ใหม่เท่านั้น
         sendToApi(clickText, messageId);
 
-        // ส่วนที่เหลือคงเดิม...
-        sendToDialogflow(clickText, chatState.sessionId, messageId)
-            .then(handleDialogflowResponse)
-            .catch(handleDialogflowError);
+        // ถ้าแอดมินกำลังแอคทีฟ ให้ส่งข้อความผ่าน Socket.IO แต่ไม่ต้องส่งไป Dialogflow
+        if (chatState.adminActive && chatState.socket && chatState.socket.connected) {
+            chatState.socket.emit('new_message', {
+                sender: 'user',
+                text: clickText,
+                timestamp: messageId,
+                room: chatState.sessionId
+            });
+        }
+        // ส่งข้อความไปยัง Dialogflow ถ้าแอดมินไม่ได้แอคทีฟ และไม่มีการส่งไป API แล้ว
+        else if (!chatState.adminActive) {
+            sendToDialogflow(clickText, chatState.sessionId, messageId)
+                .then(handleDialogflowResponse)
+                .catch(handleDialogflowError);
+        }
     }
-
 
 function addSystemMessage(text) {
     const messageElement = document.createElement('div');
