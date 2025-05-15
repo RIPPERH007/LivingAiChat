@@ -26,8 +26,8 @@ const chatState = {
     socket: null,
     adminActive: false,
     lastMessageSender: null,
-    apiBaseUrl: 'https://9751-58-8-179-158.ngrok-free.app/api/v1', // เพิ่มใหม่: Base URL สำหรับ API
-    apiToken: 'd734ce5c4be61d6d7a311044bad0ef447630f25fe0f31e70628699938aa2ca96' // เพิ่มใหม่: Bearer Token
+    apiBaseUrl: 'https://ownwebdev1.livinginsider.com/api/v1', // เพิ่มใหม่: Base URL สำหรับ API
+    apiToken: 'b059a15197926350fb43271477779d0fc04f6a4701eb3367c999c59eeae1f890' // เพิ่มใหม่: Bearer Token
 
 };
 
@@ -779,7 +779,7 @@ function renderPropertyCard(property) {
         formData.append('web_id', chatState.webId);
         formData.append('detail', message);
         formData.append('type', type); // 1 = ข้อความปกติ, 2 = options, 3 = item_list
-        formData.append('sender', 'guest');
+        formData.append('sender', 'user');
 
         // ถ้ามี options ให้เพิ่มลงไป
         if (options) {
@@ -787,7 +787,7 @@ function renderPropertyCard(property) {
         }
 
         // ส่งข้อมูลไปยัง API
-        fetch(`${chatState.apiBaseUrl}/send/sms`, {
+        fetch(`${chatState.apiBaseUrl}/chat/send/sms`, {
             method: 'POST',
             headers: {
                         'Authorization': `Bearer ${chatState.apiToken}` // เพิ่ม Bearer Token ในส่วน headers
