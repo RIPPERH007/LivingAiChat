@@ -22,9 +22,13 @@
 const chatState = {
     isOpen: false,
     sessionId: generateSessionId(),
+    webId: '001', // เพิ่มใหม่: web_id สำหรับ API
     socket: null,
-    adminActive: false,  // เพิ่มสถานะการทำงานของแอดมิน
-    lastMessageSender: null // เพิ่มเพื่อติดตามว่าใครส่งข้อความล่าสุด
+    adminActive: false,
+    lastMessageSender: null,
+    apiBaseUrl: 'https://9751-58-8-179-158.ngrok-free.app/api/v1', // เพิ่มใหม่: Base URL สำหรับ API
+    apiToken: 'd734ce5c4be61d6d7a311044bad0ef447630f25fe0f31e70628699938aa2ca96' // เพิ่มใหม่: Bearer Token
+
 };
 
     // การลงทะเบียนตัวจัดการเหตุการณ์
@@ -33,6 +37,22 @@ const chatState = {
         elements.chatMinimizeBtn.addEventListener('click', toggleChat);
         elements.chatSendBtn.addEventListener('click', sendMessage);
 
+
+            if (elements.chatToggleBtn) {
+                // ลบ Event Listener เดิมก่อน (ถ้ามี) เพื่อป้องกัน event ซ้ำซ้อน
+                elements.chatToggleBtn.removeEventListener('click', toggleChat);
+
+                // เพิ่ม Event Listener ใหม่
+                elements.chatToggleBtn.addEventListener('click', function(e) {
+                    console.log('ปุ่มแชทถูกคลิก');
+                    e.preventDefault(); // ป้องกันการทำงานอื่นๆ
+                    toggleChat();
+                });
+
+                console.log('เพิ่ม Event Listener ให้กับปุ่มแชทเรียบร้อยแล้ว');
+            } else {
+                console.error('ไม่พบปุ่มแชท (chatToggleBtn)');
+            }
         // ถ้า chatNowBtn มีอยู่
         if (elements.chatNowBtn) {
             elements.chatNowBtn.addEventListener('click', startChat);
@@ -272,20 +292,38 @@ function updateAdminStatusDisplay(isActive, adminName) {
     }
 }
     // สลับหน้าต่างแชท
+    // สลับหน้าต่างแชท
     function toggleChat() {
+        // สลับสถานะ
         chatState.isOpen = !chatState.isOpen;
-        elements.chatWindow.style.display = chatState.isOpen ? 'flex' : 'none';
-        elements.chatToggleBtn.style.display = chatState.isOpen ? 'none' : 'flex';
+        console.log('toggleChat - สถานะใหม่:', chatState.isOpen);
 
+        // ปรับการแสดงผลตามสถานะ
         if (chatState.isOpen) {
-            elements.chatWindow.classList.add('fade-in');
+            // เปิดแชท
+            if (elements.chatWindow) {
+                elements.chatWindow.style.display = 'flex';
+                elements.chatWindow.classList.add('fade-in');
+            }
 
-            // เชื่อมต่อกับ Socket.IO เมื่อเปิดแชท
+            if (elements.chatToggleBtn) {
+                elements.chatToggleBtn.style.display = 'none';
+            }
+
+            // เชื่อมต่อ Socket.IO หากจำเป็น
             if (!chatState.socket) {
                 connectSocket();
-            } else if (chatState.socket.disconnected) {
-                // ลองเชื่อมต่อใหม่ถ้าขาดการเชื่อมต่อ
+            } else if (chatState.socket && chatState.socket.disconnected) {
                 chatState.socket.connect();
+            }
+        } else {
+            // ปิดแชท
+            if (elements.chatWindow) {
+                elements.chatWindow.style.display = 'none';
+            }
+
+            if (elements.chatToggleBtn) {
+                elements.chatToggleBtn.style.display = 'flex';
             }
         }
     }
@@ -308,16 +346,17 @@ function updateAdminStatusDisplay(isActive, adminName) {
         const clickText = chipElement.dataset.text;
         if (!clickText) return;
 
+        const messageId = Date.now();
+        addMessage('user', clickText, '', messageId);
 
-            // กรณีคลิก chip อื่นๆ ที่ไม่ใช่การค้นหา
-            const messageId = Date.now();
-            addMessage('user', clickText, '', messageId);
+        // เพิ่มบรรทัดนี้: ส่งข้อความไปยัง API ใหม่
+        sendToApi(clickText, messageId);
 
-            sendToDialogflow(clickText, chatState.sessionId, messageId)
-                .then(handleDialogflowResponse)
-                .catch(handleDialogflowError);
+        // ส่วนที่เหลือคงเดิม...
+        sendToDialogflow(clickText, chatState.sessionId, messageId)
+            .then(handleDialogflowResponse)
+            .catch(handleDialogflowError);
     }
-
 
 
 function addSystemMessage(text) {
@@ -334,17 +373,20 @@ function addSystemMessage(text) {
 
     // ส่งข้อความ
    function sendMessage() {
-       const message = elements.chatInput.value.trim();
-       if (!message) return;
+        const message = elements.chatInput.value.trim();
+           if (!message) return;
 
-       const messageId = Date.now();
+           const messageId = Date.now();
 
-       // แสดงข้อความผู้ใช้
-       addMessage('user', message, '', messageId);
-       chatState.lastMessageSender = 'user';
+           // แสดงข้อความผู้ใช้
+           addMessage('user', message, '', messageId);
+           chatState.lastMessageSender = 'user';
 
-       // เคลียร์ช่องข้อความ
-       elements.chatInput.value = '';
+           // เคลียร์ช่องข้อความ
+           elements.chatInput.value = '';
+
+           // เพิ่มบรรทัดนี้: ส่งข้อความไปยัง API ใหม่
+           sendToApi(message, messageId);
 
        // ถ้าแอดมินกำลังแอคทีฟ ให้ส่งข้อความผ่าน Socket.IO แต่ไม่ต้องส่งไป Dialogflow
        if (chatState.adminActive) {
@@ -469,7 +511,25 @@ function addSystemMessage(text) {
 
                 scrollToBottom();
             }
+
+            if (response.payload.richContent && response.payload.richContent.length > 0) {
+                        for (const contentArray of response.payload.richContent) {
+                            for (const item of contentArray) {
+                                if (item.type === 'chips' && item.options && item.options.length > 0) {
+                                    // เตรียมข้อมูลปุ่ม chips
+                                    const chipOptions = item.options.map(option => option.text);
+
+                                    // ส่งไปยัง API ด้วย type 2 (options)
+                                    // ใช้ response.message เป็น detail (title) และ chipOptions เป็น options
+                                    sendToApi(response.message || "ตัวเลือก", payloadMessageId, "2", chipOptions);
+                                    break;
+                                }
+                            }
+                        }
+                    }
         }
+
+
     }
 
     // ฟังก์ชันย่อยสำหรับการแสดงผล Rich Content
@@ -701,6 +761,37 @@ function renderPropertyCard(property) {
   `;
 }
 
+    // ส่งข้อความไปยัง API ใหม่
+    function sendToApi(message, messageId, type = "1", options = null) {
+        // สร้าง FormData สำหรับส่งข้อมูล
+        const formData = new FormData();
+        formData.append('room_id', chatState.sessionId);
+        formData.append('web_id', chatState.webId);
+        formData.append('detail', message);
+        formData.append('type', type); // 1 = ข้อความปกติ, 2 = options, 3 = item_list
+        formData.append('sender', 'guest');
+
+        // ถ้ามี options ให้เพิ่มลงไป
+        if (options) {
+            formData.append('options', JSON.stringify(options));
+        }
+
+        // ส่งข้อมูลไปยัง API
+        fetch(`${chatState.apiBaseUrl}/send/sms`, {
+            method: 'POST',
+            headers: {
+                        'Authorization': `Bearer ${chatState.apiToken}` // เพิ่ม Bearer Token ในส่วน headers
+                    },
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('ส่งข้อความไปยัง API สำเร็จ:', data);
+        })
+        .catch(error => {
+            console.error('เกิดข้อผิดพลาดในการส่งข้อความไปยัง API:', error);
+        });
+    }
     // เพิ่ม Event Listeners สำหรับองค์ประกอบแบบโต้ตอบ
 function addInteractiveListeners(richContentElement) {
     console.log('Setting up interactive elements');
@@ -771,14 +862,22 @@ function addInteractiveListeners(richContentElement) {
     function init() {
         console.log('Initializing chat with session ID:', chatState.sessionId);
         setupEventListeners();
-        setupAdminStatusIndicator(); // เพิ่มการตั้งค่า indicator
+        setupAdminStatusIndicator();
 
-        // พยายามเชื่อมต่อกับ Socket.IO
+        // รีเซ็ตสถานะให้ถูกต้อง
+        chatState.isOpen = false;
+        if (elements.chatToggleBtn) elements.chatToggleBtn.style.display = 'flex';
+        if (elements.chatWindow) elements.chatWindow.style.display = 'none';
+
+        // เชื่อมต่อกับ Socket.IO
         if (typeof io !== 'undefined') {
             connectSocket();
         } else {
             console.log('Socket.IO library not available, will attempt to connect when chat is opened');
         }
+
+        // อย่าเรียกใช้ toggleChat ที่นี่
+        // toggleChat(); // <-- ลบออกหากมี
     }
     function addAdminStatusStyles() {
         const style = document.createElement('style');
@@ -815,8 +914,50 @@ function addInteractiveListeners(richContentElement) {
         `;
         document.head.appendChild(style);
     }
+// เพิ่มฟังก์ชันนี้
+function resetChatState() {
+    // กำหนดให้สถานะเริ่มต้นเป็น ปิด
+    chatState.isOpen = false;
 
+    // กำหนดให้ปุ่มแชทแสดง และหน้าต่างแชทซ่อน ตามสถานะเริ่มต้น
+    if (elements.chatToggleBtn) {
+        elements.chatToggleBtn.style.display = 'flex';
+    }
+
+    if (elements.chatWindow) {
+        elements.chatWindow.style.display = 'none';
+    }
+
+    console.log('รีเซ็ตสถานะแชท:', {
+        isOpen: chatState.isOpen,
+        chatToggleBtn: elements.chatToggleBtn ? elements.chatToggleBtn.style.display : 'ไม่พบ element',
+        chatWindow: elements.chatWindow ? elements.chatWindow.style.display : 'ไม่พบ element'
+    });
+}
     // เรียกใช้การเริ่มต้นเมื่อโหลดหน้าเว็บ
     document.addEventListener('DOMContentLoaded', addAdminStatusStyles);
     document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', function() {
+        // รอให้เอกสาร HTML โหลดเสร็จสมบูรณ์
+        console.log('DOM Content Loaded');
+
+        // ทดสอบเลือก elements อีกครั้ง
+        const chatToggleBtn = document.getElementById('chat-toggle-btn');
+
+        if (chatToggleBtn) {
+            console.log('พบปุ่มแชท - เพิ่ม onclick อีกทาง');
+            // ใช้ onclick แทน addEventListener เพื่อป้องกัน event ซ้ำซ้อน
+            chatToggleBtn.onclick = function() {
+                console.log('ปุ่มแชทถูกคลิกผ่าน onclick');
+                toggleChat();
+                return false; // ป้องกันการทำงานตามค่าเริ่มต้น
+            };
+        } else {
+            console.error('ไม่พบปุ่มแชทในช่วง DOMContentLoaded');
+        }
+
+        // เรียกใช้ init() ตามปกติ
+        init();
+    });
+
 })();

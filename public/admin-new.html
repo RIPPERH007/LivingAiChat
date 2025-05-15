@@ -702,7 +702,11 @@
             id: 'admin1',
             name: 'แอดมิน'
         },
-        adminActive: false
+        adminActive: false,
+        currentWebId: '001', // Web ID สำหรับใช้กับ API
+        apiBaseUrl: 'https://9751-58-8-179-158.ngrok-free.app/api/v1', // เพิ่ม Base URL สำหรับ API
+        apiToken: 'd734ce5c4be61d6d7a311044bad0ef447630f25fe0f31e70628699938aa2ca96' // เพิ่ม Bearer Token
+
     };
 
     // DOM Elements
@@ -809,37 +813,57 @@
     }
 
     // โหลดรายการการสนทนาทั้งหมด
-    function loadConversations() {
-        console.log('กำลังโหลดรายการการสนทนา...');
+    // โหลดรายการการสนทนาทั้งหมดจาก API
+function loadConversations() {
+  console.log('กำลังโหลดรายการการสนทนา...');
 
-        elements.conversationList.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">กำลังโหลดข้อมูลการสนทนา...</td></tr>';
+    const apiUrl = `${adminState.apiBaseUrl}/chat/lists?web_id=${adminState.currentWebId}`;
 
-        // ใช้ fetch เพื่อโหลดข้อมูลการสนทนาจาก API
-        fetch('/api/conversations')
-            .then(response => response.json())
-            .then(data => {
-                if (data.success && data.conversations && data.conversations.length > 0) {
-                    console.log('โหลดการสนทนาสำเร็จ:', data.conversations.length, 'รายการ');
+  fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+            'Authorization': `Bearer ${adminState.apiToken}` // เพิ่ม Bearer Token ในส่วน headers
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.status === "success" && Array.isArray(data.rooms)) {
+        console.log('โหลดการสนทนาสำเร็จ:', data.rooms.length, 'รายการ');
 
-                    // เก็บข้อมูลการสนทนาในสถานะ
-                    data.conversations.forEach(conv => {
-                        adminState.conversations[conv.sessionId] = conv;
-                    });
+        // แปลงข้อมูลจาก API เป็นรูปแบบที่ต้องการใช้
+        data.rooms.forEach(room => {
+          const lastMessage = room.messages && room.messages.length > 0
+              ? room.messages[0]
+              : null;
 
-                    // อัปเดตจำนวนการสนทนาในแต่ละแท็บ
-                    updateConversationCounts(data.conversations);
+          adminState.conversations[room.room_id] = {
+            sessionId: room.room_id,
+            roomId: room.room_id,
+            webId: adminState.currentWebId,
+            userInfo: room.contact_info || {},
+            status: room.status_reply ? 'answered' : 'waiting',
+            lastActivity: room.updatetime || Date.now(),
+            lastMessage: lastMessage ? {
+              text: lastMessage.message,
+              sender: lastMessage.sender,
+              timestamp: lastMessage.create_date
+            } : null
+          };
+        });
 
-                    // แสดงรายการการสนทนา
-                    renderConversationList();
-                } else {
-                    elements.conversationList.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">ไม่พบข้อมูลการสนทนา</td></tr>';
-                }
-            })
-            .catch(error => {
-                console.error('เกิดข้อผิดพลาดในการโหลดการสนทนา:', error);
-                elements.conversationList.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: red;">เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>';
-            });
-    }
+        // อัปเดตและแสดงผล
+        updateConversationCounts(Object.values(adminState.conversations));
+        renderConversationList();
+      } else {
+        console.error('ข้อมูลไม่ถูกต้องหรือไม่พบการสนทนา');
+        elements.conversationList.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">ไม่พบข้อมูลการสนทนา</td></tr>';
+      }
+    })
+    .catch(error => {
+      console.error('เกิดข้อผิดพลาดในการโหลดการสนทนา:', error);
+      elements.conversationList.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: red;">เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>';
+    });
+}
 
     // อัปเดตจำนวนการสนทนาในแต่ละแท็บ
     function updateConversationCounts(conversations) {
@@ -939,82 +963,149 @@ function renderConversationList() {
 
 // เปิดห้องแชท
 function openChatSession(sessionId) {
-    console.log('เปิดห้องแชท:', sessionId);
+  console.log('เปิดห้องแชท:', sessionId);
 
-    // บันทึก sessionId ปัจจุบัน
-    adminState.currentSessionId = sessionId;
+  // ดึงข้อมูลห้องแชทจาก state
+  const conversation = adminState.conversations[sessionId];
+  if (!conversation) {
+    console.error('ไม่พบข้อมูลการสนทนา:', sessionId);
+    return;
+  }
 
-    // แสดงหน้าต่างแชท
-    elements.chatPanel.style.display = 'flex';
+  const roomId = conversation.roomId || sessionId;
+  const webId = conversation.webId || adminState.currentWebId;
 
-    // เคลียร์ข้อความเก่า
-    elements.adminChatMessages.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">กำลังโหลดข้อความ...</div>';
+  // บันทึก sessionId และ roomId ปัจจุบัน
+  adminState.currentSessionId = sessionId;
+  adminState.currentRoomId = roomId;
 
-    // เข้าร่วมห้องแชท
-    if (adminState.socket) {
-        console.log('เข้าร่วมห้อง:', sessionId);
-        adminState.socket.emit('join', sessionId);
-    }
+  // แสดงหน้าต่างแชท
+  elements.chatPanel.style.display = 'flex';
+  elements.adminChatMessages.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">กำลังโหลดข้อความ...</div>';
 
-    // โหลดประวัติการสนทนาและข้อมูลลูกค้า
-    fetch(`/api/conversations/${sessionId}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success && data.conversation) {
-                console.log('โหลดข้อมูลการสนทนาสำเร็จ');
+  // เรียก API เพื่อโหลดประวัติการสนทนา
+    const apiUrl = `${adminState.apiBaseUrl}/chat/open?web_id=${webId}&room_id=${roomId}`;
 
-                // อัปเดตข้อมูลลูกค้า
-                const userInfo = data.sessionData?.userInfo || {};
-                const name = userInfo.name || 'ไม่ระบุชื่อ';
-                const email = userInfo.email || '';
-                const phone = userInfo.phone || '';
-                const contact = [email, phone].filter(Boolean).join(' • ') || 'ไม่มีข้อมูลติดต่อ';
+  fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+            'Authorization': `Bearer ${adminState.apiToken}` // เพิ่ม Bearer Token ในส่วน headers
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.status === "success") {
+        console.log('โหลดข้อมูลการสนทนาสำเร็จ');
 
-                elements.chatCustomerName.textContent = name;
-                elements.chatCustomerContact.textContent = contact;
+        // อัปเดตข้อมูลลูกค้า
+        const userInfo = data.contact_info || {};
+        const name = userInfo.name || 'ไม่ระบุชื่อ';
+        const email = userInfo.email || '';
+        const phone = userInfo.phone || '';
+        const contact = [email, phone].filter(Boolean).join(' • ') || 'ไม่มีข้อมูลติดต่อ';
 
-                // อัปเดตสถานะแอดมิน
-                adminState.adminActive = data.conversation.adminActive || false;
-                updateAdminStatusBtn();
+        elements.chatCustomerName.textContent = name;
+        elements.chatCustomerContact.textContent = contact;
 
-                // แสดงประวัติการสนทนา
-                if (data.conversation.messages && data.conversation.messages.length > 0) {
-                    displayChatHistory(data.conversation.messages);
-                } else {
-                    elements.adminChatMessages.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">ยังไม่มีข้อความในการสนทนานี้</div>';
-                }
-            } else {
-                elements.adminChatMessages.innerHTML = '<div style="text-align:center;padding:20px;color:red;">ไม่พบข้อมูลการสนทนา</div>';
-            }
-        })
-        .catch(error => {
-            console.error('เกิดข้อผิดพลาดในการโหลดข้อมูลการสนทนา:', error);
-            elements.adminChatMessages.innerHTML = '<div style="text-align:center;padding:20px;color:red;">เกิดข้อผิดพลาดในการโหลดข้อมูล</div>';
-        });
+        // อัปเดตสถานะแอดมิน
+        adminState.adminActive = data.status_reply === 1;
+        updateAdminStatusBtn();
+
+        // แสดงประวัติการสนทนา
+        if (data.messages && data.messages.length > 0) {
+          displayChatHistory(data.messages);
+        } else {
+          elements.adminChatMessages.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">ยังไม่มีข้อความในการสนทนานี้</div>';
+        }
+      } else {
+        elements.adminChatMessages.innerHTML = '<div style="text-align:center;padding:20px;color:red;">ไม่พบข้อมูลการสนทนา</div>';
+      }
+    })
+    .catch(error => {
+      console.error('เกิดข้อผิดพลาดในการโหลดข้อมูลการสนทนา:', error);
+      elements.adminChatMessages.innerHTML = '<div style="text-align:center;padding:20px;color:red;">เกิดข้อผิดพลาดในการโหลดข้อมูล</div>';
+    });
+
+  // เข้าร่วมห้องแชท (ใช้ Socket.IO)
+  if (adminState.socket) {
+    console.log('เข้าร่วมห้อง:', sessionId);
+    adminState.socket.emit('join', sessionId);
+  }
 }
 
 // แสดงประวัติการสนทนา
 function displayChatHistory(messages) {
-    elements.adminChatMessages.innerHTML = '';
+  elements.adminChatMessages.innerHTML = '';
 
-    messages.forEach(msg => {
-        addMessageToChat({
-            sender: msg.sender,
-            text: msg.text,
-            timestamp: msg.timestamp,
-            adminName: msg.adminName,
-            room: adminState.currentSessionId,
-            payload: msg.payload
+  messages.forEach(msg => {
+    // แปลงข้อมูลให้ตรงกับรูปแบบที่ใช้ในฟังก์ชัน addMessageToChat
+    const messageData = {
+      sender: msg.sender,
+      text: msg.message || '', // รองรับทั้ง message และ text
+      timestamp: msg.create_date,
+      adminName: msg.adminName || (msg.sender === 'admin' ? adminState.adminInfo.name : undefined),
+      room: adminState.currentSessionId
+    };
+
+    // ตรวจสอบข้อมูลเพิ่มเติม (เช่น item_list สำหรับแสดงรายการอสังหาริมทรัพย์)
+    if (msg.type === 3 && msg.item_list && Array.isArray(msg.item_list)) {
+      messageData.payload = {
+        richContent: [
+          [
+            {
+              type: "info",
+              title: msg.message || "รายการอสังหาริมทรัพย์",
+              subtitle: `พบทั้งหมด ${msg.item_list.length} รายการ`
+            },
+            ...msg.item_list.map(item => ({
+              type: "custom_card",
+              property_data: {
+                id: item.web_id,
+                imageUrl: item.photo || '',
+                title: item.name || 'ไม่ระบุชื่อ',
+                location: item.zone_name || 'ไม่ระบุที่ตั้ง',
+                price: item.price || '-',
+                tag: item.tag || 'ขาย',
+                link: item.link || '#'
+              }
+            }))
+          ]
+        ]
+      };
+
+      // เพิ่มปุ่ม "ดูเพิ่มเติม" ถ้ามี
+      if (msg.more && msg.more.link) {
+        messageData.payload.richContent[0].push({
+          type: "button",
+          options: [
+            {
+              text: msg.more.txt || "ดูเพิ่มเติม",
+              link: msg.more.link
+            }
+          ]
         });
-    });
+      }
+    } else if (msg.type === 2 && msg.options && Array.isArray(msg.options)) {
+      // แสดงตัวเลือกเป็น chips
+      messageData.payload = {
+        richContent: [
+          [
+            {
+              type: "chips",
+              options: msg.options.map(option => ({ text: option }))
+            }
+          ]
+        ]
+      };
+    }
 
-    // เลื่อนไปที่ข้อความล่าสุด
-    scrollToBottom();
+    addMessageToChat(messageData);
+  });
+
+  // เลื่อนไปที่ข้อความล่าสุด
+  scrollToBottom();
 }
 
-// เพิ่มข้อความในหน้าต่างแชท
-// เพิ่มข้อความในหน้าต่างแชท (แก้ไขฟังก์ชันนี้)
-// เพิ่มข้อความในหน้าต่างแชท
 function addMessageToChat(data) {
     // ตรวจสอบว่าเป็นข้อความซ้ำหรือไม่
     if (isMessageDuplicate(data.timestamp)) {
@@ -1113,65 +1204,71 @@ function closeChatPanel() {
     elements.chatPanel.style.display = 'none';
 }
 
-// ส่งข้อความจากแอดมิน
+// ส่งข้อความจากแอดมิน// ส่งข้อความจากแอดมิน
 function sendAdminMessage() {
-    const message = elements.adminChatInput.value.trim();
-    if (!message || !adminState.currentSessionId) return;
+  const message = elements.adminChatInput.value.trim();
+  if (!message || !adminState.currentSessionId) return;
 
-    const timestamp = Date.now();
+  const timestamp = Date.now();
+  const roomId = adminState.currentRoomId || adminState.currentSessionId;
+  const webId = adminState.currentWebId;
 
-    // แสดงข้อความในหน้าต่างแชท
-    addMessageToChat({
-        sender: 'admin',
-        text: message,
-        adminName: adminState.adminInfo.name,
-        timestamp: timestamp,
-        room: adminState.currentSessionId
-    });
+  // แสดงข้อความในหน้าต่างแชท
+  addMessageToChat({
+    sender: 'admin',
+    text: message,
+    adminName: adminState.adminInfo.name,
+    timestamp: timestamp,
+    room: adminState.currentSessionId
+  });
 
-    // ส่งข้อความผ่าน Socket.IO
-    if (adminState.socket) {
-        adminState.socket.emit('new_message', {
-            sender: 'admin',
-            text: message,
-            adminId: adminState.adminInfo.id,
-            adminName: adminState.adminInfo.name,
-            timestamp: timestamp,
-            room: adminState.currentSessionId
-        });
-    }
+  // เตรียมข้อมูลสำหรับส่ง API
+  const formData = new FormData();
+  formData.append('room_id', roomId);
+  formData.append('web_id', webId);
+  formData.append('detail', message);
+  formData.append('type', '1'); // ประเภทข้อความปกติ
+  formData.append('sender', 'admin');
+  formData.append('options', ''); // ไม่มีตัวเลือกเพิ่มเติม
 
-    // ส่งข้อความผ่าน API ด้วยเพื่อเพิ่มความน่าเชื่อถือ
-    fetch('/api/admin/message', {
-        method: 'POST',
+  // ส่งข้อความผ่าน API
+  fetch(`${adminState.apiBaseUrl}/send/sms`, {
+    method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Authorization': `Bearer ${adminState.apiToken}` // เพิ่ม Bearer Token ในส่วน headers
         },
-        body: JSON.stringify({
-            sessionId: adminState.currentSessionId,
-            message: message,
-            adminId: adminState.adminInfo.id,
-            adminName: adminState.adminInfo.name,
-            messageId: timestamp
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        console.log('ส่งข้อความผ่าน API สำเร็จ:', data);
+    body: formData
+  })
+  .then(response => response.json())
+  .then(data => {
+    console.log('ส่งข้อความผ่าน API สำเร็จ:', data);
 
-        // อัปเดตสถานะ conversation ในรายการเป็น 'answered'
-        if (adminState.conversations[adminState.currentSessionId]) {
-            adminState.conversations[adminState.currentSessionId].status = 'answered';
-            renderConversationList();
-        }
-    })
-    .catch(error => {
-        console.error('เกิดข้อผิดพลาดในการส่งข้อความผ่าน API:', error);
+    // อัปเดตสถานะ conversation ในรายการเป็น 'answered'
+    if (adminState.conversations[adminState.currentSessionId]) {
+      adminState.conversations[adminState.currentSessionId].status = 'answered';
+      renderConversationList();
+    }
+  })
+  .catch(error => {
+    console.error('เกิดข้อผิดพลาดในการส่งข้อความผ่าน API:', error);
+    showNotification('เกิดข้อผิดพลาดในการส่งข้อความ', 'error');
+  });
+
+  // ส่งข้อความผ่าน Socket.IO ด้วย (ถ้าต้องการ)
+  if (adminState.socket) {
+    adminState.socket.emit('new_message', {
+      sender: 'admin',
+      text: message,
+      adminId: adminState.adminInfo.id,
+      adminName: adminState.adminInfo.name,
+      timestamp: timestamp,
+      room: adminState.currentSessionId
     });
+  }
 
-    // เคลียร์ช่องข้อความ
-    elements.adminChatInput.value = '';
-    elements.adminChatInput.focus();
+  // เคลียร์ช่องข้อความ
+  elements.adminChatInput.value = '';
+  elements.adminChatInput.focus();
 }
 
 // สลับสถานะแอดมิน
