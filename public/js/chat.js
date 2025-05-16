@@ -128,44 +128,25 @@ function connectSocket() {
             }
         });
 
-        // เมื่อมีข้อความใหม่จากเซิร์ฟเวอร์
-        // ในส่วนของ socket.on('new_message')
+        // ปรับปรุงการจัดการ response ใน socket.on('new_message') ใน chat.js
         chatState.socket.on('new_message', (message) => {
             console.log('New message received via socket:', message);
 
             // เช็คว่าเป็นข้อความที่แสดงไปแล้วหรือไม่
             if (isMessageDuplicate(message.timestamp)) {
-                    console.log('Duplicate message from socket, ignoring:', message);
-                    return;
-                }
-
+                console.log('Duplicate message from socket, ignoring:', message);
+                return;
+            }
 
             // แสดงข้อความตามประเภท
             if (message.sender === 'admin') {
                 // ข้อความจากแอดมิน
-                const messageElement = document.createElement('div');
-                messageElement.className = 'message bot-message';
-                messageElement.setAttribute('data-message-id', message.timestamp);
-                messageElement.innerHTML = `
-                    <div class="message-avatar">
-                        <img src="assets/icons/chat-avatar.jpg" alt="Admin">
-                    </div>
-                    <div class="message-content admin-message">
-                        <p>${escapeHTML(message.text)}</p>
-                        <small>${escapeHTML(message.adminName || 'Admin')}</small>
-                    </div>
-                `;
-
-                elements.chatMessages.appendChild(messageElement);
-                scrollToBottom();
-
-                // บันทึกข้อมูลลง localStorage
-                saveChatToLocalStorage();
+                // (โค้ดเดิม)
             }
             else if (message.sender === 'bot') {
                 // ข้อความจากบอท
 
-                // จัดการกับ payload ถ้ามี
+                // จัดการกับ payload และ type 2 (options)
                 if (message.payload) {
                     const richContentHtml = processRichContent(message.payload);
 
@@ -178,6 +159,7 @@ function connectSocket() {
                                 <img src="assets/icons/chat-avatar.jpg" alt="Bot">
                             </div>
                             <div class="message-content">
+                                ${message.text ? `<p>${escapeHTML(message.text)}</p>` : ''}
                                 ${richContentHtml}
                             </div>
                         `;
@@ -189,52 +171,54 @@ function connectSocket() {
                         // บันทึกข้อมูลลง localStorage
                         saveChatToLocalStorage();
                     }
-                    else if (message.type === "2" && message.options && Array.isArray(message.options)) {
-                                // สร้าง UI chips จาก options
-                                const chipsItem = {
-                                    type: 'chips',
-                                    options: message.options.map(option => ({
-                                        text: option
-                                    }))
-                                };
+                }
+                // เพิ่มเงื่อนไขสำหรับข้อความที่มี type 2 (options) แต่ไม่มี payload
+                else if (message.type === "2" && message.options && Array.isArray(message.options)) {
+                    // สร้าง UI chips จาก options
+                    const chipsItem = {
+                        type: 'chips',
+                        options: message.options.map(option => ({
+                            text: option
+                        }))
+                    };
 
-                                // สร้าง HTML สำหรับ chips
-                                const chipsHtml = renderChips(chipsItem);
+                    // สร้าง HTML สำหรับ chips
+                    const chipsHtml = renderChips(chipsItem);
 
-                                // สร้าง message element
-                                const messageElement = document.createElement('div');
-                                messageElement.className = 'message bot-message';
-                                messageElement.setAttribute('data-message-id', message.timestamp);
-                                messageElement.innerHTML = `
-                                    <div class="message-avatar">
-                                        <img src="assets/icons/chat-avatar.jpg" alt="Bot">
-                                    </div>
-                                    <div class="message-content">
-                                        <p>${escapeHTML(message.text || '')}</p>
-                                        ${chipsHtml}
-                                    </div>
-                                `;
+                    // สร้าง message element
+                    const messageElement = document.createElement('div');
+                    messageElement.className = 'message bot-message';
+                    messageElement.setAttribute('data-message-id', message.timestamp);
+                    messageElement.innerHTML = `
+                        <div class="message-avatar">
+                            <img src="assets/icons/chat-avatar.jpg" alt="Bot">
+                        </div>
+                        <div class="message-content">
+                            <p>${escapeHTML(message.text || '')}</p>
+                            ${chipsHtml}
+                        </div>
+                    `;
 
-                                // เพิ่มลงใน DOM
-                                elements.chatMessages.appendChild(messageElement);
+                    // เพิ่มลงใน DOM
+                    elements.chatMessages.appendChild(messageElement);
 
-                                // เพิ่ม Event Listeners สำหรับ chips
-                                addInteractiveListeners(messageElement);
+                    // เพิ่ม Event Listeners สำหรับ chips
+                    addInteractiveListeners(messageElement);
 
-                                // เลื่อนไปที่ข้อความล่าสุด
-                                scrollToBottom();
+                    // เลื่อนไปที่ข้อความล่าสุด
+                    scrollToBottom();
 
-                                // บันทึกข้อมูลลง localStorage
-                                saveChatToLocalStorage();
-                            }
-                            else if (message.text) {
-                                // ถ้ามีข้อความธรรมดา
-                                addMessage('bot', message.text, '', message.timestamp);
-                            }
-                } else if (message.sender === 'user') {
-                          // เพิ่มเงื่อนไขเพื่อป้องกันการซ้ำซ้อน
-                          addMessage('user', message.text, '', message.timestamp);
-               }
+                    // บันทึกข้อมูลลง localStorage
+                    saveChatToLocalStorage();
+                }
+                else if (message.text) {
+                    // ถ้ามีข้อความธรรมดา
+                    addMessage('bot', message.text, '', message.timestamp);
+                }
+            }
+            else if (message.sender === 'user') {
+                // ข้อความจากผู้ใช้
+                addMessage('user', message.text, '', message.timestamp);
             }
         });
 
@@ -399,29 +383,23 @@ function updateAdminStatusDisplay(isActive, adminName) {
         elements.chatInput.focus();
     }
 
+// แก้ไขฟังก์ชัน handleChipClick ใน chat.js
 function handleChipClick(chipElement) {
     const clickText = chipElement.dataset.text;
     if (!clickText) return;
 
     const messageId = Date.now();
 
-    // ต้องแสดงข้อความผู้ใช้ทุกครั้ง
+    // แสดงข้อความผู้ใช้
     addMessage('user', clickText, '', messageId);
 
-    // ส่งข้อความไปยัง API ใหม่
+    // ส่งข้อความไปยัง API เท่านั้น (ลดการส่งซ้ำซ้อน)
     sendToApi(clickText, messageId);
 
-    // ส่งข้อความผ่าน Socket.IO ถ้ามีการเชื่อมต่อ
-    if (chatState.socket && chatState.socket.connected) {
-        chatState.socket.emit('new_message', {
-            sender: 'user',
-            text: clickText,
-            timestamp: messageId,
-            room: chatState.sessionId
-        });
-    }
+    // ไม่ต้องส่งผ่าน Socket.IO อีก เพราะ API จะจัดการให้
+    // ยกเลิกการส่งไปยัง Socket.IO โดยตรง
 
-    // ส่งข้อความไปยัง Dialogflow ถ้าแอดมินไม่ได้แอคทีฟ
+    // ถ้าแอดมินไม่ได้แอคทีฟจึงส่งไปยัง Dialogflow
     if (!chatState.adminActive) {
         sendToDialogflow(clickText, chatState.sessionId, messageId)
             .then(handleDialogflowResponse)
@@ -431,6 +409,7 @@ function handleChipClick(chipElement) {
     // บันทึกข้อมูลลง localStorage
     saveChatToLocalStorage();
 }
+
 function addSystemMessage(text) {
     const messageElement = document.createElement('div');
     messageElement.className = 'message system-message';
@@ -1021,65 +1000,86 @@ function sendToApi(message, messageId, type = "1", options = null) {
     }
 
     // ส่งข้อมูลไปยัง API
-    fetch(`${chatState.apiBaseUrl}/chat/send/sms`, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${chatState.apiToken}`
-        },
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        console.log('ส่งข้อความไปยัง API สำเร็จ:', data);
+   fetch(`${chatState.apiBaseUrl}/chat/send/sms`, {
+           method: 'POST',
+           headers: {
+               'Authorization': `Bearer ${chatState.apiToken}`
+           },
+           body: formData
+       })
+       .then(response => response.json())
+       .then(data => {
+           console.log('ส่งข้อความไปยัง API สำเร็จ:', data);
 
-        // ตรวจสอบการตอบกลับจาก API
-        if (data.status === "success" && data.message) {
-            // ถ้า API ตอบกลับมาพร้อม options สำหรับ chips
-            if (data.type === "2" && data.options && Array.isArray(data.options)) {
-                // สร้าง UI chips จาก options ที่ได้รับ
-                const chipsItem = {
-                    type: 'chips',
-                    options: data.options.map(option => ({
-                        text: option
-                    }))
-                };
+           // ตรวจสอบการตอบกลับจาก API
+           if (data.status === "success" && data.message) {
+               // ถ้า API ตอบกลับมาพร้อม options สำหรับ chips
+               if (data.type === "2" && data.options && Array.isArray(data.options)) {
+                   // สร้าง message object ที่จะส่งให้ socket (เพื่อป้องกันการส่งซ้ำ)
+                   const botMessageId = Date.now() + 1;  // +1 เพื่อไม่ให้ซ้ำกับ messageId ของ user
 
-                // สร้าง HTML สำหรับ chips และแสดงผล
-                const chipsHtml = renderChips(chipsItem);
+                   // กำหนด messageObject ให้ถูกต้องตามรูปแบบที่ socket.on('new_message') เข้าใจ
+                   const messageObject = {
+                       sender: 'bot',
+                       text: data.message,
+                       type: "2",
+                       options: data.options,
+                       timestamp: botMessageId,
+                       room: chatState.sessionId
+                   };
 
-                // สร้าง message element
-                const botMessageId = Date.now() + 1;  // + 1 เพื่อไม่ให้ซ้ำกับ messageId ของ user
-                const messageElement = document.createElement('div');
-                messageElement.className = 'message bot-message';
-                messageElement.setAttribute('data-message-id', botMessageId);
-                messageElement.innerHTML = `
-                    <div class="message-avatar">
-                        <img src="assets/icons/chat-avatar.jpg" alt="Bot">
-                    </div>
-                    <div class="message-content">
-                        <p>${escapeHTML(data.message)}</p>
-                        ${chipsHtml}
-                    </div>
-                `;
+                   // จำลองเหตุการณ์ socket 'new_message' เพื่อใช้โค้ดเดียวกัน
+                   if (chatState.socket && typeof chatState.socket.onevent === 'function') {
+                       // ถ้ามีวิธีจำลอง event ให้ใช้วิธีนี้
+                       chatState.socket._onevent({
+                           data: ['new_message', messageObject]
+                       });
+                   } else {
+                       // ถ้าไม่สามารถจำลอง event ได้ ให้เรียกโค้ดโดยตรง
+                       // สร้าง UI chips จาก options
+                       const chipsItem = {
+                           type: 'chips',
+                           options: data.options.map(option => ({
+                               text: option
+                           }))
+                       };
 
-                // เพิ่มลงใน DOM
-                elements.chatMessages.appendChild(messageElement);
+                       // สร้าง HTML สำหรับ chips
+                       const chipsHtml = renderChips(chipsItem);
 
-                // เพิ่ม Event Listeners สำหรับ chips
-                addInteractiveListeners(messageElement);
+                       // สร้าง message element
+                       const messageElement = document.createElement('div');
+                       messageElement.className = 'message bot-message';
+                       messageElement.setAttribute('data-message-id', botMessageId);
+                       messageElement.innerHTML = `
+                           <div class="message-avatar">
+                               <img src="assets/icons/chat-avatar.jpg" alt="Bot">
+                           </div>
+                           <div class="message-content">
+                               <p>${escapeHTML(data.message)}</p>
+                               ${chipsHtml}
+                           </div>
+                       `;
 
-                // เลื่อนไปที่ข้อความล่าสุด
-                scrollToBottom();
+                       // เพิ่มลงใน DOM
+                       elements.chatMessages.appendChild(messageElement);
 
-                // บันทึกข้อมูลลง localStorage
-                saveChatToLocalStorage();
-            }
-        }
-    })
-    .catch(error => {
-        console.error('เกิดข้อผิดพลาดในการส่งข้อความไปยัง API:', error);
-    });
-}
+                       // เพิ่ม Event Listeners สำหรับ chips
+                       addInteractiveListeners(messageElement);
+
+                       // เลื่อนไปที่ข้อความล่าสุด
+                       scrollToBottom();
+
+                       // บันทึกข้อมูลลง localStorage
+                       saveChatToLocalStorage();
+                   }
+               }
+           }
+       })
+       .catch(error => {
+           console.error('เกิดข้อผิดพลาดในการส่งข้อความไปยัง API:', error);
+       });
+   }
     // เพิ่ม Event Listeners สำหรับองค์ประกอบแบบโต้ตอบ
 function addInteractiveListeners(richContentElement) {
     console.log('Setting up interactive elements');
