@@ -1547,7 +1547,7 @@ server.listen(PORT, () => {
         JSON.stringify(searchParams, null, 2));
 
       // สร้าง URL สำหรับเรียก API
-      const apiUrl = 'https://ownwebdev1.livinginsider.com/api/v1/chat_prop_listing2';
+      const apiUrl = 'https://ownwebdev1.livinginsider.com/api/v1/chat_prop_listing';
 
       // สร้าง URL params
       const params = new URLSearchParams();
@@ -1558,7 +1558,7 @@ server.listen(PORT, () => {
       });
 
       // เรียกใช้ API
-      const fullUrl = `${apiUrl}?${params.toString()}`;
+      const fullUrl = `${apiUrl}`;
       console.log(`[${new Date().toISOString()}] [PropertySearch] [${sessionId}] Final API URL: ${fullUrl}`);
 
       // ส่งคำขอ API
