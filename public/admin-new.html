@@ -225,44 +225,8 @@
             color: white;
         }
 
-        /* Chat Panel */
-        .chat-panel {
-            position: fixed;
-            top: 0;
-            right: 0;
-            width: 350px;
-            height: 100vh;
-            background-color: white;
-            box-shadow: -2px 0 5px var(--shadow);
-            display: none;
-            flex-direction: column;
-            z-index: 1000;
-        }
 
-        .chat-header {
-            padding: 15px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background-color: var(--purple);
-            color: white;
-        }
 
-        .customer-info {
-            display: flex;
-            align-items: center;
-        }
-
-        .customer-info h3 {
-            font-size: 16px;
-            font-weight: 500;
-        }
-
-        .customer-info p {
-            font-size: 12px;
-            color: rgba(255, 255, 255, 0.7);
-        }
 
         .chat-actions button {
             background: none;
@@ -288,12 +252,7 @@
             background-color: rgba(255, 255, 255, 0.3);
         }
 
-        .chat-messages {
-            flex: 1;
-            padding: 15px;
-            overflow-y: auto;
-            background-color: white;
-        }
+
 
         /* แก้ไข CSS โดยสลับฝั่ง user กับ admin/bot */
         .message {
@@ -565,6 +524,87 @@
             font-weight: bold;
             color: #5e35b1;
         }
+        /* Conversation Tabs - แก้ไขตามรูปที่ 2 */
+.conversation-tabs {
+    display: flex;
+    background-color: white; /* เปลี่ยนจากสีม่วงเป็นสีขาว */
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.tab {
+    flex: 1;
+    text-align: center;
+    padding: 14px 20px;
+    color: var(--text-dark); /* เปลี่ยนสีตัวอักษรเป็นสีเข้ม */
+    text-decoration: none;
+    position: relative;
+    font-weight: 500;
+    transition: all 0.3s;
+}
+
+.tab.active {
+    color: white;
+    background-color: #5e35b1; /* แท็บที่เลือกมีพื้นหลังสีม่วงเข้ม */
+}
+
+.count {
+    display: block; /* เปลี่ยนเป็น block เพื่อให้ตัวเลขอยู่ด้านล่าง */
+    font-size: 12px;
+    margin-top: 2px;
+}
+
+        /* Chat Panel - แก้ไขตามคำขอให้เป็นแบบขวาล่าง */
+            .chat-panel {
+                position: fixed;
+                bottom: 20px; /* เปลี่ยนจาก top: 0 เป็น bottom: 20px */
+                right: 20px;
+                width: 500px;
+                height: 700px; /* ปรับความสูงให้พอดี */
+                background-color: white;
+                box-shadow: 0 5px 15px var(--chat-shadow);
+                border-radius: 10px; /* เพิ่มความโค้งของขอบ */
+                display: none;
+                flex-direction: column;
+                z-index: 1000;
+                overflow: hidden;
+            }
+
+
+
+
+        /* ปรับพื้นที่แสดงข้อความ */
+        .chat-messages {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            background-color: #f5f5f5;
+        }
+
+        /* แก้ไขสีของส่วนหัวแชท */
+        .chat-header {
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #5e35b1; /* ใช้สีม่วงเข้ม */
+            color: white;
+        }
+
+        .customer-info {
+            display: flex;
+            flex-direction: column; /* แสดงข้อมูลในแนวตั้ง */
+        }
+
+        .customer-info h3 {
+            font-size: 16px;
+            font-weight: 500;
+            margin-bottom: 2px;
+        }
+
+        .customer-info p {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.8);
+        }
 
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(-20px); }
@@ -613,20 +653,19 @@
                 </div>
             </div>
         </header>
-
         <!-- Conversation Tabs -->
         <div class="conversation-tabs">
             <a href="#" class="tab active" data-status="all">
-                ทั้งหมด
-                <span class="count all-count">(0)</span>
+                กำลังคุย
+                <span class="count all-count">(39)</span>
             </a>
             <a href="#" class="tab" data-status="waiting">
-                รอตอบกลับ
-                <span class="count waiting-count">(0)</span>
+                ยังไม่ได้ตอบกลับ
+                <span class="count waiting-count">(30)</span>
             </a>
             <a href="#" class="tab" data-status="answered">
-                ตอบแล้ว
-                <span class="count answered-count">(0)</span>
+                ตอบกลับแล้ว
+                <span class="count answered-count">(9)</span>
             </a>
         </div>
 
@@ -670,7 +709,7 @@
         <div class="chat-header">
             <div class="customer-info">
                 <div id="chat-customer-name">ลูกค้า</div>
-                <p id="chat-customer-contact">เยี่ยมชมเว็บไซต์</p>
+                <div id="chat-customer-contact">เยี่ยมชมเว็บไซต์</div>
             </div>
             <div class="chat-actions">
                 <button id="admin-status-btn" class="admin-status-btn">เปิดใช้งานแอดมิน</button>
@@ -679,14 +718,24 @@
         </div>
 
         <div class="chat-messages" id="adminChatMessages">
-            <!-- ข้อความจะแสดงที่นี่ -->
+            <!-- ข้อความตัวอย่าง -->
+            <div class="message bot">
+                <div class="message-content">
+                    👋 สวัสดีค่ะ ฉันคือผู้ช่วยอัจฉริยะของ My Property พร้อมช่วยคุณค้นหา ซื้อ ขาย หรือเช่าอสังหาฯ แบบง่าย ๆ สนใจเรื่องไหน ถามกับฉันได้เลย!
+                </div>
+            </div>
+
+            <div class="message user">
+                <div class="message-content">
+                    Can I get a mortgage in Thailand?
+                </div>
+            </div>
         </div>
 
         <div class="chat-input-area">
             <input type="text" id="admin-chat-input" placeholder="พิมพ์ข้อความ...">
             <button class="send-btn" id="admin-send-btn"><i class="fas fa-paper-plane"></i></button>
         </div>
-    </div>
 </div>
 
 <!-- JavaScript -->
@@ -1021,11 +1070,11 @@ function renderConversationList() {
 
     // เรียงลำดับตามเวลาล่าสุด
     filteredConversations.sort((a, b) => {
-        // ใช้เวลาล่าสุดในการเรียง (lastActivity หรือ timestamp ของ lastMessage)
-        const timeA = a.lastActivity || (a.lastMessage && a.lastMessage.timestamp) || 0;
-        const timeB = b.lastActivity || (b.lastMessage && b.lastMessage.timestamp) || 0;
-        return timeA - timeB; // เรียงจากเก่าไปใหม่
-    });
+    // ใช้เวลาล่าสุดในการเรียง (lastActivity หรือ timestamp ของ lastMessage)
+    const timeA = a.lastActivity || (a.lastMessage && a.lastMessage.timestamp) || 0;
+    const timeB = b.lastActivity || (b.lastMessage && b.lastMessage.timestamp) || 0;
+    return timeB - timeA; // เรียงจากใหม่ไปเก่า เพื่อให้ข้อความล่าสุดขึ้นมาด้านบน
+});
     // สร้าง HTML
     if (filteredConversations.length === 0) {
         elements.conversationList.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">ไม่พบข้อมูลการสนทนาที่ตรงกับเงื่อนไข</td></tr>';
