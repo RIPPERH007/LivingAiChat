@@ -900,6 +900,29 @@ body {
   color: #333;
   margin-top: 4px;
 }
+.li-property-more-button {
+    margin-top: 8px;
+}
+
+.li-more-link {
+    display: inline-block;
+    color: #5e35b1;
+    font-size: 13px;
+    text-decoration: none;
+    padding: 5px 10px;
+    border-radius: 15px;
+    background-color: rgba(94, 53, 177, 0.1);
+    transition: all 0.2s;
+}
+
+.li-more-link:hover {
+    background-color: rgba(94, 53, 177, 0.2);
+}
+
+.li-more-link i {
+    margin-left: 5px;
+    font-size: 11px;
+}
 
 /* เมื่ออยู่ในข้อความ bot ให้ปรับ margin */
 .bot-message .message-content .li-property-card {
