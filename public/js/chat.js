@@ -725,7 +725,7 @@
 
     function sendBotMessageToApi(message) {
         // ตรวจสอบว่ามีข้อความหรือไม่
-        if (!message.text && !message.richContent && !message.chips) {
+        if (!message.text && !message.chipsHTML && !message.richContentHTML) {
             return; // ไม่มีข้อมูลที่จะส่ง
         }
 
@@ -735,7 +735,7 @@
         // ตรวจสอบว่ามี chips หรือไม่
         if (message.chips && message.chips.length > 0) {
             messageType = "2"; // ข้อความที่มีตัวเลือก (chips)
-        } else if (message.richContent) {
+        } else if (message.richContentHTML) {
             messageType = "3"; // ข้อความที่มี rich content
         }
 
@@ -818,61 +818,113 @@
    }
 
 
-    // เพิ่มข้อความ
-    function addMessage(sender, text, senderName = '', messageId = null) {
-        const timestamp = messageId || Date.now();
+    // แก้ไขฟังก์ชัน addMessage ให้ส่ง Socket จากทั้งฝั่ง User และ Bot
+    function addMessage(sender, text, senderName = '', messageId = null, options = null, richContent = null) {
+    const timestamp = messageId || Date.now();
 
-        // ตรวจสอบว่ามีข้อความนี้อยู่แล้วหรือไม่
-        if (isMessageDuplicate(timestamp)) {
-            console.log('ข้อความซ้ำ ไม่แสดงซ้ำ:', text);
-            return;
-        }
-
-        const messageElement = document.createElement('div');
-        messageElement.className = `message ${sender}-message`;
-        messageElement.setAttribute('data-message-id', timestamp);
-        messageElement.innerHTML = `
-            <div class="message-avatar">
-                ${sender === 'user'
-                ? '<i class="fa-solid fa-user"></i>'
-                : '<img src="assets/icons/chat-avatar.jpg" alt="Bot">'
-            }
-            </div>
-            <div class="message-content">
-                <p>${escapeHTML(text)}</p>
-            </div>
-        `;
-        elements.chatMessages.appendChild(messageElement);
-        scrollToBottom();
-
-        // ส่งข้อความผ่าน Socket.IO ในกรณีที่เป็นข้อความของผู้ใช้
-        // แต่ต้องเช็คว่าไม่ใช่ข้อความที่มาจาก Socket.IO
-        if (sender === 'user' && chatState.socket && chatState.socket.connected &&
-            !messageElement.hasAttribute('from-socket')) {
-            // เพิ่ม attribute เพื่อระบุว่าเป็นข้อความที่ส่งผ่าน Socket.IO แล้ว
-            messageElement.setAttribute('from-socket', 'true');
-
-            // ไม่ต้องส่งซ้ำถ้าข้อความนี้อยู่ใน chat cache แล้ว
-            const cacheKey = `${sender}-${timestamp}`;
-            if (!chatState.messageSentCache || !chatState.messageSentCache[cacheKey]) {
-                // เก็บ cache ว่าข้อความนี้ถูกส่งแล้ว
-                if (!chatState.messageSentCache) chatState.messageSentCache = {};
-                chatState.messageSentCache[cacheKey] = true;
-
-                chatState.socket.emit('new_message', {
-                    sender: 'user',
-                    text: text,
-                    timestamp: timestamp,
-                    room: chatState.sessionId
-                });
-            }
-        }
-
-        // บันทึกข้อมูลลง localStorage
-        saveChatToLocalStorage();
+    // ตรวจสอบว่ามีข้อความนี้อยู่แล้วหรือไม่
+    if (isMessageDuplicate(timestamp)) {
+        console.log('ข้อความซ้ำ ไม่แสดงซ้ำ:', text);
+        return timestamp;
     }
 
-    // บันทึกข้อมูลแชทลง localStorage
+    const messageElement = document.createElement('div');
+    messageElement.className = `message ${sender}-message`;
+    messageElement.setAttribute('data-message-id', timestamp);
+
+    // สร้าง HTML content ตามประเภทของข้อความ
+    let contentHTML = `
+        <div class="message-avatar">
+            ${sender === 'user'
+            ? '<i class="fa-solid fa-user"></i>'
+            : '<img src="assets/icons/chat-avatar.jpg" alt="Bot">'
+        }
+        </div>
+        <div class="message-content">
+            <p>${escapeHTML(text)}</p>
+    `;
+
+    // ถ้ามี options (chips) ให้เพิ่ม chips HTML
+    if (options && Array.isArray(options) && options.length > 0) {
+        const chipsItem = {
+            type: 'chips',
+            options: options
+        };
+        contentHTML += renderChips(chipsItem);
+    }
+
+    // ถ้ามี richContent ให้เพิ่ม HTML ของ richContent
+    if (richContent) {
+        const richContentHtml = processRichContent(richContent);
+        if (richContentHtml) {
+            contentHTML += `<div class="rich-content-container">${richContentHtml}</div>`;
+        }
+    }
+
+    // ปิด div
+    contentHTML += '</div>';
+
+    // เพิ่ม HTML ลงใน message element
+    messageElement.innerHTML = contentHTML;
+
+    // เพิ่มลงใน DOM
+    elements.chatMessages.appendChild(messageElement);
+
+    // เพิ่ม event listeners สำหรับองค์ประกอบแบบโต้ตอบ
+    if (options || richContent) {
+        addInteractiveListeners(messageElement);
+    }
+
+    // เลื่อนไปที่ข้อความล่าสุด
+    scrollToBottom();
+
+    // ส่งข้อความผ่าน Socket.IO ทั้งฝั่ง user และ bot
+    if ((sender === 'user' || sender === 'bot') && chatState.socket && chatState.socket.connected &&
+        !messageElement.hasAttribute('from-socket')) {
+        // เพิ่ม attribute เพื่อระบุว่าเป็นข้อความที่ส่งผ่าน Socket.IO แล้ว
+        messageElement.setAttribute('from-socket', 'true');
+
+        // ไม่ต้องส่งซ้ำถ้าข้อความนี้อยู่ใน chat cache แล้ว
+        const cacheKey = `${sender}-${timestamp}`;
+        if (!chatState.messageSentCache || !chatState.messageSentCache[cacheKey]) {
+            // เก็บ cache ว่าข้อความนี้ถูกส่งแล้ว
+            if (!chatState.messageSentCache) chatState.messageSentCache = {};
+            chatState.messageSentCache[cacheKey] = true;
+
+            // สร้างข้อมูลสำหรับส่ง socket
+            let socketData = {
+                sender: sender,
+                text: text,
+                timestamp: timestamp,
+                room: chatState.sessionId
+            };
+
+            // ถ้ามี options ให้เพิ่มข้อมูล options และ type
+            if (options && Array.isArray(options) && options.length > 0) {
+                socketData.type = "2"; // ประเภทข้อความที่มีตัวเลือก (chips)
+                socketData.options = options.map(opt => typeof opt === 'object' ? opt.text || opt : opt);
+            }
+
+            // ถ้ามี richContent ให้เพิ่มข้อมูล payload และ type
+            if (richContent) {
+                socketData.type = "3"; // ประเภทข้อความที่มี rich content
+                socketData.payload = richContent;
+            }
+
+            // ส่งข้อมูลผ่าน socket
+            chatState.socket.emit('new_message', socketData);
+            console.log(`ส่งข้อความ ${sender} ${options ? 'ที่มี chips' : ''} ${richContent ? 'ที่มี rich content' : ''} ผ่าน socket:`, socketData);
+        }
+    }
+
+    // บันทึกข้อมูลลง localStorage
+    saveChatToLocalStorage();
+
+    return timestamp;
+}
+
+
+    // แก้ไขฟังก์ชัน saveChatToLocalStorage ให้เก็บข้อมูล chips อย่างถูกต้อง
     function saveChatToLocalStorage() {
         try {
             // เก็บข้อมูล session ID
@@ -900,15 +952,20 @@
                 const messageText = messageContent ? messageContent.querySelector('p')?.innerText : '';
                 const timestamp = msg.dataset.messageId || Date.now();
 
-                // ดึงข้อมูล chips (ถ้ามี)
+                // ดึงข้อมูล chips และ rich content (ถ้ามี)
                 const chipsContainer = messageContent ? messageContent.querySelector('.chips-container') : null;
-                const richContent = messageContent ? messageContent.querySelector('.rich-content-container')?.innerHTML : '';
+                const richContentContainer = messageContent ? messageContent.querySelector('.rich-content-container') : null;
+
+                // เก็บทั้ง HTML ของ chips และ rich content
+                const chipsHTML = chipsContainer ? chipsContainer.outerHTML : '';
+                const richContentHTML = richContentContainer ? richContentContainer.outerHTML : '';
 
                 // สร้างออบเจ็กต์เก็บข้อมูลข้อความ
                 const messageData = {
                     type: isBotMessage ? 'bot' : (isUserMessage ? 'user' : 'system'),
                     text: messageText || '',
-                    richContent: richContent || '',
+                    chipsHTML: chipsHTML || '',  // เก็บ HTML ของ chips
+                    richContentHTML: richContentHTML || '',  // เก็บ HTML ของ rich content
                     timestamp: timestamp,
                     hasChips: !!chipsContainer, // เก็บสถานะว่ามี chips หรือไม่
                     sentToApi: sentMessages[timestamp] === true // เก็บสถานะว่าส่งไป API แล้วหรือไม่ (ดึงจากข้อมูลที่บันทึกไว้)
@@ -961,6 +1018,7 @@
         }
     }
 
+
     // โหลดข้อมูลแชทจาก localStorage
     function loadChatFromLocalStorage() {
         try {
@@ -1000,25 +1058,42 @@
                     }
 
                     if (msg.type === 'user') {
+                        // ข้อความจากผู้ใช้
                         addMessage('user', msg.text, '', msg.timestamp);
                     } else if (msg.type === 'bot') {
-                        // ถ้ามี rich content
-                        if (msg.richContent) {
+                        // กรณีมี chips หรือ rich content
+                        if (msg.chipsHTML || msg.richContentHTML) {
                             const messageElement = document.createElement('div');
                             messageElement.className = 'message bot-message';
                             messageElement.setAttribute('data-message-id', msg.timestamp);
-                            messageElement.innerHTML = `
+
+                            // สร้าง HTML สำหรับข้อความที่มี chips หรือ rich content
+                            let contentHTML = `
                                 <div class="message-avatar">
                                     <img src="assets/icons/chat-avatar.jpg" alt="Bot">
                                 </div>
                                 <div class="message-content">
                                     <p>${escapeHTML(msg.text)}</p>
-                                    <div class="rich-content-container">${msg.richContent}</div>
-                                </div>
                             `;
+
+                            // เพิ่ม chips (ถ้ามี)
+                            if (msg.chipsHTML) {
+                                contentHTML += msg.chipsHTML;
+                            }
+
+                            // เพิ่ม rich content (ถ้ามี)
+                            if (msg.richContentHTML) {
+                                contentHTML += msg.richContentHTML;
+                            }
+
+                            // ปิด div
+                            contentHTML += '</div>';
+
+                            messageElement.innerHTML = contentHTML;
                             elements.chatMessages.appendChild(messageElement);
                             addInteractiveListeners(messageElement);
                         } else {
+                            // ข้อความทั่วไปจาก bot
                             addMessage('bot', msg.text, '', msg.timestamp);
                         }
                     } else if (msg.type === 'system') {
@@ -1123,6 +1198,42 @@
         return false;
     }
 
+
+    function showGreetingMessage() {
+        // สร้าง message element ใหม่
+        const messageId = Date.now();
+        const messageElement = document.createElement('div');
+        messageElement.className = 'message bot-message';
+        messageElement.setAttribute('data-message-id', messageId);
+
+        // กำหนด HTML สำหรับ greeting message
+        messageElement.innerHTML = `
+            <div class="message-avatar">
+                <img src="assets/icons/chat-avatar.jpg" alt="Bot">
+            </div>
+            <div class="message-content welcome-message">
+                <p>👋 สวัสดีค่ะ ฉันคือผู้ช่วยอัจฉริยะของ My Property พร้อมช่วยคุณค้นหา ซื้อ ขาย หรือเช่าอสังหาฯ แบบง่าย ๆ สนใจเรื่องไหน ถามกับฉันได้เลย!</p>
+
+                <div class="chips-container">
+                    <div class="chip" data-text="ต้องการหาซื้อ">ต้องการหาซื้อ</div>
+                    <div class="chip" data-text="ต้องการหาเช่า">ต้องการหาเช่า</div>
+                    <div class="chip" data-text="ติดต่อเจ้าหน้าที่">ติดต่อเจ้าหน้าที่</div>
+                </div>
+            </div>
+        `;
+
+        // เพิ่มข้อความลงใน DOM
+        elements.chatMessages.appendChild(messageElement);
+
+        // เพิ่ม Event Listeners สำหรับ chips
+        addInteractiveListeners(messageElement);
+
+        // เลื่อนไปที่ข้อความล่าสุด
+        scrollToBottom();
+
+        addMessage('bot', messageText, '', null, options);
+
+    }
     function showTransactionTypeOptions() {
         const chipsItem = {
             type: 'chips',
@@ -1136,6 +1247,9 @@
         // สร้าง HTML สำหรับ chips
         const chipsHtml = renderChips(chipsItem);
 
+        // สร้างข้อความคำถาม (แก้ไขจาก summaryText เป็นการกำหนดค่าโดยตรง)
+        const messageText = 'คุณสนใจอสังหาริมทรัพย์ประเภทไหนคะ?';
+
         // สร้าง message element
         const messageId = Date.now() + 1;
         const messageElement = document.createElement('div');
@@ -1146,7 +1260,7 @@
                 <img src="assets/icons/chat-avatar.jpg" alt="Bot">
             </div>
             <div class="message-content">
-                <p>${summaryText}</p>
+                <p>${messageText}</p>
                 ${chipsHtml}
             </div>
         `;
@@ -1159,6 +1273,8 @@
 
         // เลื่อนไปที่ข้อความล่าสุด
         scrollToBottom();
+
+        addMessage('bot', messageText, '', null, chipsItem.options);
 
         // บันทึกข้อมูลลง localStorage
         saveChatToLocalStorage();
@@ -1212,6 +1328,8 @@
 
         // เลื่อนไปที่ข้อความล่าสุด
         scrollToBottom();
+
+        addMessage('bot', messageText, '', null, chipsItem.options);
 
         // บันทึกข้อมูลลง localStorage
         saveChatToLocalStorage();
@@ -1282,56 +1400,13 @@
         chatState.lastLocationMessageTime.timestamp = Date.now();
         chatState.lastLocationMessageTime.messageId = messageId;
 
+
+        addMessage('bot', messageText, '', null, chipsItem.options);
+
         // บันทึกข้อมูลลง localStorage
         saveChatToLocalStorage();
     }
 
-    // ฟังก์ชันใหม่เพื่อตรวจสอบว่ามีข้อความคำถามทำเลที่แสดงอยู่แล้วหรือไม่
-    function checkForExistingLocationMessage() {
-        // 1. ตรวจสอบข้อความล่าสุดที่มีในพื้นที่แชท
-        const recentMessages = Array.from(elements.chatMessages.querySelectorAll('.message.bot-message'));
-
-        // กรณีไม่มีข้อความใดๆ
-        if (recentMessages.length === 0) return null;
-
-        // 2. ตรวจสอบจากข้อความ 5 ข้อความล่าสุด
-        const lastMessages = recentMessages.slice(-5);
-
-        // 3. ตรวจสอบว่ามีข้อความที่เกี่ยวกับทำเลหรือไม่
-        for (const msg of lastMessages) {
-            // ตรวจสอบจาก attribute ที่เราตั้งไว้
-            if (msg.getAttribute('data-message-type') === 'location-options') {
-                return msg;
-            }
-
-            // ตรวจสอบจากเนื้อหาข้อความ (กรณีที่ไม่มี attribute)
-            const msgContent = msg.querySelector('.message-content p');
-            if (msgContent &&
-                (msgContent.textContent.includes('ทำเลไหน') ||
-                 msgContent.textContent.includes('ในทำเลไหน'))) {
-                return msg;
-            }
-
-            // ตรวจสอบจาก chips เกี่ยวกับทำเล
-            const chips = msg.querySelectorAll('.chip');
-            for (const chip of chips) {
-                const chipText = chip.textContent.trim();
-                if (['กรุงเทพ', 'เชียงใหม่', 'ภูเก็ต', 'พัทยา', 'รัชดา', 'สุขุมวิท'].includes(chipText)) {
-                    return msg;
-                }
-            }
-        }
-
-        // 4. ตรวจสอบจากเวลาการแสดงข้อความล่าสุด
-        if (chatState.lastLocationMessageTime && chatState.lastLocationMessageTime.timestamp) {
-            const timeDiff = Date.now() - chatState.lastLocationMessageTime.timestamp;
-            if (timeDiff < 5000) { // ถ้าเพิ่งแสดงข้อความไปไม่เกิน 5 วินาที ถือว่าซ้ำ
-                return { id: chatState.lastLocationMessageTime.messageId };
-            }
-        }
-
-        return null;
-    }
 
     function showPriceOptions() {
         // กำหนดตัวเลือกราคาตามประเภทธุรกรรมและประเภทอสังหาริมทรัพย์
@@ -1435,6 +1510,7 @@
         // เลื่อนไปที่ข้อความล่าสุด
         scrollToBottom();
 
+        addMessage('bot', messageText, '', null, chipsItem.options);
         // บันทึกข้อมูลลง localStorage
         saveChatToLocalStorage();
     }
@@ -1514,9 +1590,59 @@
      // เลื่อนไปที่ข้อความล่าสุด
      scrollToBottom();
 
+     addMessage('bot', summaryText, '', null, chipsItem.options);
      // บันทึกข้อมูลลง localStorage
      saveChatToLocalStorage();
      }
+
+
+    // ฟังก์ชันใหม่เพื่อตรวจสอบว่ามีข้อความคำถามทำเลที่แสดงอยู่แล้วหรือไม่
+    function checkForExistingLocationMessage() {
+        // 1. ตรวจสอบข้อความล่าสุดที่มีในพื้นที่แชท
+        const recentMessages = Array.from(elements.chatMessages.querySelectorAll('.message.bot-message'));
+
+        // กรณีไม่มีข้อความใดๆ
+        if (recentMessages.length === 0) return null;
+
+        // 2. ตรวจสอบจากข้อความ 5 ข้อความล่าสุด
+        const lastMessages = recentMessages.slice(-5);
+
+        // 3. ตรวจสอบว่ามีข้อความที่เกี่ยวกับทำเลหรือไม่
+        for (const msg of lastMessages) {
+            // ตรวจสอบจาก attribute ที่เราตั้งไว้
+            if (msg.getAttribute('data-message-type') === 'location-options') {
+                return msg;
+            }
+
+            // ตรวจสอบจากเนื้อหาข้อความ (กรณีที่ไม่มี attribute)
+            const msgContent = msg.querySelector('.message-content p');
+            if (msgContent &&
+                (msgContent.textContent.includes('ทำเลไหน') ||
+                 msgContent.textContent.includes('ในทำเลไหน'))) {
+                return msg;
+            }
+
+            // ตรวจสอบจาก chips เกี่ยวกับทำเล
+            const chips = msg.querySelectorAll('.chip');
+            for (const chip of chips) {
+                const chipText = chip.textContent.trim();
+                if (['กรุงเทพ', 'เชียงใหม่', 'ภูเก็ต', 'พัทยา', 'รัชดา', 'สุขุมวิท'].includes(chipText)) {
+                    return msg;
+                }
+            }
+        }
+
+        // 4. ตรวจสอบจากเวลาการแสดงข้อความล่าสุด
+        if (chatState.lastLocationMessageTime && chatState.lastLocationMessageTime.timestamp) {
+            const timeDiff = Date.now() - chatState.lastLocationMessageTime.timestamp;
+            if (timeDiff < 5000) { // ถ้าเพิ่งแสดงข้อความไปไม่เกิน 5 วินาที ถือว่าซ้ำ
+                return { id: chatState.lastLocationMessageTime.messageId };
+            }
+        }
+
+        return null;
+    }
+
 
     // ฟังก์ชันย่อยสำหรับการแสดงผล Rich Content
     function renderInfoCard(item) {
@@ -2107,38 +2233,6 @@
         saveChatToLocalStorage();
     }
 
-    function showGreetingMessage() {
-        // สร้าง message element ใหม่
-        const messageId = Date.now();
-        const messageElement = document.createElement('div');
-        messageElement.className = 'message bot-message';
-        messageElement.setAttribute('data-message-id', messageId);
-
-        // กำหนด HTML สำหรับ greeting message
-        messageElement.innerHTML = `
-            <div class="message-avatar">
-                <img src="assets/icons/chat-avatar.jpg" alt="Bot">
-            </div>
-            <div class="message-content welcome-message">
-                <p>👋 สวัสดีค่ะ ฉันคือผู้ช่วยอัจฉริยะของ My Property พร้อมช่วยคุณค้นหา ซื้อ ขาย หรือเช่าอสังหาฯ แบบง่าย ๆ สนใจเรื่องไหน ถามกับฉันได้เลย!</p>
-
-                <div class="chips-container">
-                    <div class="chip" data-text="ต้องการหาซื้อ">ต้องการหาซื้อ</div>
-                    <div class="chip" data-text="ต้องการหาเช่า">ต้องการหาเช่า</div>
-                    <div class="chip" data-text="ติดต่อเจ้าหน้าที่">ติดต่อเจ้าหน้าที่</div>
-                </div>
-            </div>
-        `;
-
-        // เพิ่มข้อความลงใน DOM
-        elements.chatMessages.appendChild(messageElement);
-
-        // เพิ่ม Event Listeners สำหรับ chips
-        addInteractiveListeners(messageElement);
-
-        // เลื่อนไปที่ข้อความล่าสุด
-        scrollToBottom();
-    }
 
     // ค้นหาอสังหาริมทรัพย์
     function searchProperties() {
@@ -2540,7 +2634,7 @@
 
         // ถ้ามีประเภทธุรกรรมแล้ว แต่ยังไม่มีประเภทอสังหา ให้ถามต่อ
         if (hasTransactionType && !hasBuildingType) {
-            showPropertyTypeOptions();
+//            showPropertyTypeOptions();
             return true;
         }
 
@@ -2565,10 +2659,10 @@
             console.log('มีข้อมูลเพียงพอสำหรับการค้นหา');
 
             // ถ้ามีราคาแล้ว หรือ อยู่ในขั้นตอนที่ 4 แล้ว ให้แสดงปุ่มยืนยันการค้นหา
-            if (chatState.propertySearch.price || chatState.currentStep >= 4) {
-                showSearchConfirmation();
-                return true;
-            }
+//            if (chatState.propertySearch.price || chatState.currentStep >= 4) {
+//                showSearchConfirmation();
+//                return true;
+//            }
         }
 
         return false;
@@ -2578,7 +2672,7 @@
     function analyzeFullSentence(message) {
         if (!message) return false;
 
-        // ป้องกันการเรียกซ้ำซ้อนในระยะเวลาใกล้เคียงกัน
+        // Prevent duplicate processing
         if (chatState.isAnalyzingMessage) {
             console.log('กำลังวิเคราะห์ข้อความอื่นอยู่ ไม่วิเคราะห์ข้อความนี้');
             return false;
@@ -2589,25 +2683,156 @@
         try {
             const lowerMessage = message.toLowerCase();
             let foundNewInfo = false;
+            let detectedInfo = {
+                transactionType: null,
+                buildingType: null,
+                location: null,
+                price: null
+            };
 
-            // โค้ดวิเคราะห์ข้อความตามปกติ...
+            // Step 1: Detect transaction type (buy/rent/sell)
+            if (lowerMessage.includes('ซื้อ') || lowerMessage.includes('buy')) {
+                detectedInfo.transactionType = 'ซื้อ';
+                console.log('ตรวจพบความตั้งใจซื้อ');
+                if (!chatState.propertySearch.transaction_type) {
+                    chatState.propertySearch.transaction_type = 'ซื้อ';
+                    foundNewInfo = true;
+                }
+            } else if (lowerMessage.includes('เช่า') || lowerMessage.includes('rent')) {
+                detectedInfo.transactionType = 'เช่า';
+                console.log('ตรวจพบความตั้งใจเช่า');
+                if (!chatState.propertySearch.transaction_type) {
+                    chatState.propertySearch.transaction_type = 'เช่า';
+                    foundNewInfo = true;
+                }
+            } else if (lowerMessage.includes('ขาย') || lowerMessage.includes('sell') || lowerMessage.includes('sale')) {
+                detectedInfo.transactionType = 'ขาย';
+                console.log('ตรวจพบความตั้งใจขาย');
+                if (!chatState.propertySearch.transaction_type) {
+                    chatState.propertySearch.transaction_type = 'ขาย';
+                    foundNewInfo = true;
+                }
+            }
 
-            // หากตรวจพบ building_type แล้ว แต่ยังไม่พบทำเล และยังไม่ได้แสดงตัวเลือกทำเล
-            if (chatState.propertySearch.building_type && !chatState.propertySearch.location &&
-                chatState.currentStep === 3 && foundNewInfo) {
+            // Step 2: Detect property type
+            if (lowerMessage.includes('คอนโด') || lowerMessage.includes('condo')) {
+                detectedInfo.buildingType = 'คอนโด';
+                console.log('ตรวจพบประเภทคอนโด');
+                if (!chatState.propertySearch.building_type) {
+                    chatState.propertySearch.building_type = 'คอนโด';
+                    foundNewInfo = true;
+                }
+            } else if (lowerMessage.includes('บ้าน') || lowerMessage.includes('house')) {
+                detectedInfo.buildingType = 'บ้าน';
+                console.log('ตรวจพบประเภทบ้าน');
+                if (!chatState.propertySearch.building_type) {
+                    chatState.propertySearch.building_type = 'บ้าน';
+                    foundNewInfo = true;
+                }
+            } else if (lowerMessage.includes('ทาวน์') || lowerMessage.includes('town')) {
+                detectedInfo.buildingType = 'ทาวน์โฮม';
+                console.log('ตรวจพบประเภททาวน์โฮม');
+                if (!chatState.propertySearch.building_type) {
+                    chatState.propertySearch.building_type = 'ทาวน์โฮม';
+                    foundNewInfo = true;
+                }
+            } else if (lowerMessage.includes('ที่ดิน') || lowerMessage.includes('land')) {
+                detectedInfo.buildingType = 'ที่ดิน';
+                console.log('ตรวจพบประเภทที่ดิน');
+                if (!chatState.propertySearch.building_type) {
+                    chatState.propertySearch.building_type = 'ที่ดิน';
+                    foundNewInfo = true;
+                }
+            } else if (lowerMessage.includes('อพาร์ทเม้นท์') || lowerMessage.includes('อพาร์ทเม้น') || lowerMessage.includes('apartment')) {
+                detectedInfo.buildingType = 'อพาร์ทเม้นท์';
+                console.log('ตรวจพบประเภทอพาร์ทเม้นท์');
+                if (!chatState.propertySearch.building_type) {
+                    chatState.propertySearch.building_type = 'อพาร์ทเม้นท์';
+                    foundNewInfo = true;
+                }
+            }
 
-                // ป้องกันการแสดงตัวเลือกทำเลซ้ำซ้อน
-                if (!isMessageDuplicateByContent('location-options', 'building_type_detected')) {
-                    // แสดงตัวเลือกทำเล
-                    setTimeout(() => {
-                        showLocationOptions();
-                    }, 500);
+            // Step 3: Detect location
+            const locations = [
+                'กรุงเทพ', 'เชียงใหม่', 'ขอนแก่น', 'พัทยา', 'ลาดพร้าว', 'สุขุมวิท', 'บางนา',
+                'อโศก', 'รามคำแหง', 'รัชดา', 'เอกมัย', 'ทองหล่อ', 'พระราม9', 'รัตนาธิเบศร์',
+                'เพชรเกษม', 'ภูเก็ต', 'ชลบุรี', 'พระราม2', 'สาทร', 'สีลม', 'ราชดำริ', 'นนทบุรี'
+            ];
+
+            for (const loc of locations) {
+                if (lowerMessage.includes(loc.toLowerCase())) {
+                    detectedInfo.location = loc;
+                    console.log('ตรวจพบทำเล:', loc);
+                    if (!chatState.propertySearch.location) {
+                        chatState.propertySearch.location = loc;
+                        foundNewInfo = true;
+                    }
+                    break;
+                }
+            }
+
+            // Step 4: Detect price
+            // Check if price is already detected by processPriceFromMessage function
+            if (processPriceFromMessage(message)) {
+                detectedInfo.price = chatState.propertySearch.price;
+                console.log('ตรวจพบราคา:', detectedInfo.price);
+                foundNewInfo = true;
+            }
+
+            // Determine the next step based on detected information
+            if (foundNewInfo) {
+                console.log('ข้อมูลที่ตรวจพบ:', detectedInfo);
+
+                // Update currentStep based on the most advanced information detected
+                if (detectedInfo.transactionType && !chatState.propertySearch.transaction_type) {
+                    chatState.currentStep = 1;
+                }
+                if (detectedInfo.buildingType && chatState.currentStep <= 2) {
+                    chatState.currentStep = 3;
+                }
+                if (detectedInfo.location && chatState.currentStep <= 3) {
+                    chatState.currentStep = 4;
+                }
+                if (detectedInfo.price && chatState.currentStep <= 4) {
+                    chatState.currentStep = 5;
+                    // If price is the last piece of information, mark as complete
+                    if (chatState.propertySearch.transaction_type &&
+                        chatState.propertySearch.building_type &&
+                        chatState.propertySearch.location) {
+                        chatState.propertySearch.isComplete = true;
+                        chatState.propertySearch.searchReady = true;
+                    }
+                }
+
+                // Count how many required pieces of information we've gathered
+                const infoCount = [
+                    chatState.propertySearch.transaction_type,
+                    chatState.propertySearch.building_type,
+                    chatState.propertySearch.location,
+                    chatState.propertySearch.price
+                ].filter(Boolean).length;
+
+                // If we've collected 3+ pieces of information, show search confirmation
+                if (infoCount >= 3) {
+                    showSearchConfirmation();
+                    return true;
+                }
+
+                // Determine what information to ask for next
+                if (!chatState.propertySearch.transaction_type) {
+                    showTransactionTypeOptions();
+                } else if (!chatState.propertySearch.building_type) {
+                    showPropertyTypeOptions();
+                } else if (!chatState.propertySearch.location) {
+                    showLocationOptions();
+                } else if (!chatState.propertySearch.price) {
+                    showPriceOptions();
                 }
             }
 
             return foundNewInfo;
         } finally {
-            // หลังจากทำงานเสร็จแล้ว รีเซ็ตสถานะการวิเคราะห์
+            // Reset analysis state after processing
             setTimeout(() => {
                 chatState.isAnalyzingMessage = false;
             }, 1000);
@@ -2701,7 +2926,6 @@
         return false;
     }
 
-    // เริ่มการทำงานของสคริปต์
     // เริ่มการทำงานของสคริปต์
     function init() {
         console.log('เริ่มต้นการทำงานของแชท - Session ID:', chatState.sessionId);
