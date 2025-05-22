@@ -221,183 +221,190 @@
        return false;
    }
     function connectSocket() {
-         console.log('=== Debug PieSocket v5 ===');
-         console.log('PieSocket type:', typeof PieSocket);
-         console.log('PieSocket object:', PieSocket);
+        console.log('=== Debug PieSocket v5 ===');
+        console.log('PieSocket type:', typeof PieSocket);
+        console.log('PieSocket object:', PieSocket);
 
-         // ตรวจสอบว่า PieSocket มีอยู่จริง
-         if (typeof PieSocket === 'undefined') {
-             console.error('PieSocket library not loaded!');
-             return false;
-         }
+        if (typeof PieSocket === 'undefined') {
+            console.error('PieSocket library not loaded!');
+            return false;
+        }
 
-         try {
-             const clusterId = 's8661.sgp1';
-             const apiKey = 'mOGIGJTyKOmsesgjpchKEECKLekVGmuCSwNv2wpl';
-             const jwtToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwdWJsaWMtY2hhbm5lbC1vd253ZWItZGV2ZWxvcG1lbnQiLCJwbGF0Zm9ybSI6Im93bndlYiIsImlhdCI6MTc0NzkwMDg0MSwiZXhwIjoyMDYzMjYwODQxfQ.-QO3q_RExUV9NjOMpPuJXqnisGaH1934nN8xvlDJgZU';
+        try {
+            const clusterId = 's8661.sgp1';
+            const apiKey = 'mOGIGJTyKOmsesgjpchKEECKLekVGmuCSwNv2wpl';
+            const jwtToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwdWJsaWMtY2hhbm5lbC1vd253ZWItZGV2ZWxvcG1lbnQiLCJwbGF0Zm9ybSI6Im93bndlYiIsImlhdCI6MTc0NzkwMDg0MSwiZXhwIjoyMDYzMjYwODQxfQ.-QO3q_RExUV9NjOMpPuJXqnisGaH1934nN8xvlDJgZU';
 
-             // ตรวจสอบว่ามีการเชื่อมต่ออยู่แล้วหรือไม่
-             if (chatState.socket && chatState.currentChannel) {
-                 console.log('PieSocket is already connected');
-                 return true;
-             }
+            if (chatState.socket && chatState.currentChannel) {
+                console.log('PieSocket is already connected');
+                return true;
+            }
 
-             console.log('Creating PieSocket v5 instance...');
+            console.log('Creating PieSocket v5 instance...');
+            let pieSocketInstance;
 
-             // PieSocket v5 API
-             let pieSocketInstance;
+            if (typeof PieSocket === 'function') {
+                pieSocketInstance = new PieSocket({
+                    clusterId: clusterId,
+                    apiKey: apiKey,
+                    notifySelf: 1,
+                    forceAuth: true,
+                    jwt: jwtToken
+                });
+            } else if (PieSocket && typeof PieSocket.default === 'function') {
+                pieSocketInstance = new PieSocket.default({
+                    clusterId: clusterId,
+                    apiKey: apiKey,
+                    notifySelf: 1,
+                    forceAuth: true,
+                    jwt: jwtToken
+                });
+            } else {
+                pieSocketInstance = PieSocket({
+                    clusterId: clusterId,
+                    apiKey: apiKey,
+                    notifySelf: 1,
+                    forceAuth: true,
+                    jwt: jwtToken
+                });
+            }
 
-             // ลองหลายวิธีสร้าง instance
-             if (typeof PieSocket === 'function') {
-                 // Constructor pattern
-                 pieSocketInstance = new PieSocket({
-                     clusterId: clusterId,
-                     apiKey: apiKey,
-                     notifySelf: 1,
-                     forceAuth: true,
-                     jwt: jwtToken
-                 });
-             } else if (PieSocket && typeof PieSocket.default === 'function') {
-                 // ES6 module pattern
-                 pieSocketInstance = new PieSocket.default({
-                     clusterId: clusterId,
-                     apiKey: apiKey,
-                     notifySelf: 1,
-                     forceAuth: true,
-                     jwt: jwtToken
-                 });
-             } else if (PieSocket && typeof PieSocket.create === 'function') {
-                 // Factory pattern
-                 pieSocketInstance = PieSocket.create({
-                     clusterId: clusterId,
-                     apiKey: apiKey,
-                     notifySelf: 1,
-                     forceAuth: true,
-                     jwt: jwtToken
-                 });
-             } else {
-                 // ลองใช้ PieSocket โดยตรง
-                 console.log('Trying direct PieSocket usage...');
-                 pieSocketInstance = PieSocket({
-                     clusterId: clusterId,
-                     apiKey: apiKey,
-                     notifySelf: 1,
-                     forceAuth: true,
-                     jwt: jwtToken
-                 });
-             }
+            if (!pieSocketInstance) {
+                throw new Error('Failed to create PieSocket instance');
+            }
 
-             if (!pieSocketInstance) {
-                 throw new Error('Failed to create PieSocket instance');
-             }
+            chatState.socket = pieSocketInstance;
+            console.log('PieSocket v5 instance created:', chatState.socket);
 
-             chatState.socket = pieSocketInstance;
-             console.log('PieSocket v5 instance created:', chatState.socket);
+            // 🔥 แก้ไขตรงนี้: ใช้ sessionId เป็น channel name
+            const environment = 'development';
+            const channelName = `chat-room-${chatState.sessionId}`; // แยก channel ตาม sessionId
 
-             // กำหนด channel name
-             const environment = 'development';
-             const channelName = `public-channel-ownweb-${environment}`;
+            console.log('Subscribing to PRIVATE channel:', channelName);
+            console.log('Session ID:', chatState.sessionId);
 
-             console.log('Subscribing to channel:', channelName);
+            // Subscribe to channel แยกตาม sessionId
+            const subscribePromise = chatState.socket.subscribe(channelName, {
+                platform: 'ownweb',
+                sessionId: chatState.sessionId, // ส่ง sessionId ไปด้วย
+                roomId: chatState.sessionId     // ส่ง roomId ไปด้วย
+            });
 
-             // Subscribe to channel
-             const subscribePromise = chatState.socket.subscribe(channelName, {
-                 platform: 'ownweb'
-             });
+            subscribePromise.then((channel) => {
+                console.log('Connected to PRIVATE PieSocket channel:', channelName);
+                console.log('Only this session will receive messages:', chatState.sessionId);
+                chatState.currentChannel = channel;
 
-             subscribePromise.then((channel) => {
-                 console.log('Connected to PieSocket with channel:', channelName);
-                 chatState.currentChannel = channel;
+                // อัปเดตสถานะการเชื่อมต่อ
+                if (elements.socketStatus) {
+                    elements.socketStatus.textContent = 'Connected';
+                    elements.socketStatus.classList.add('connected');
+                    elements.socketStatus.classList.remove('disconnected');
+                }
 
-                 // อัปเดตสถานะการเชื่อมต่อ
-                 if (elements.socketStatus) {
-                     elements.socketStatus.textContent = 'Connected';
-                     elements.socketStatus.classList.add('connected');
-                     elements.socketStatus.classList.remove('disconnected');
-                 }
+                // 🔥 เมื่อมีข้อความใหม่ - ตรวจสอบ sessionId/roomId
+                channel.listen('new_message', (message) => {
+                    console.log('=== CLIENT RECEIVED MESSAGE ===');
+                    console.log('Message data:', message);
+                    console.log('Target room:', message.room);
+                    console.log('Current session:', chatState.sessionId);
 
-                 // เมื่อมีข้อความใหม่
-                 channel.listen('new_message', (message) => {
-                     console.log('New message received via PieSocket:', message);
+                    // ⚠️ ตรวจสอบว่าข้อความนี้เป็นของ session นี้หรือไม่
+                    if (message.room && message.room !== chatState.sessionId) {
+                        console.log('❌ Message not for this session, ignoring');
+                        return;
+                    }
 
-                     // เช็คว่าเป็นข้อความที่แสดงไปแล้วหรือไม่
-                     if (isMessageDuplicate(message)) {
-                         console.log('Duplicate message, ignoring:', message);
-                         return;
-                     }
+                    // เช็คว่าเป็นข้อความที่แสดงไปแล้วหรือไม่
+                    if (isMessageDuplicate(message)) {
+                        console.log('Duplicate message, ignoring:', message);
+                        return;
+                    }
 
-                     // แสดงข้อความตามประเภท
-                     if (message.sender === 'admin') {
-                         const messageElement = document.createElement('div');
-                         messageElement.className = 'message bot-message';
-                         messageElement.setAttribute('data-message-id', message.timestamp);
-                         messageElement.innerHTML = `
-                             <div class="message-avatar">
-                                 <img src="assets/icons/chat-avatar.jpg" alt="Admin">
-                             </div>
-                             <div class="message-content admin-message">
-                                 <p>${escapeHTML(message.text)}</p>
-                                 <small>${escapeHTML(message.adminName || 'Admin')}</small>
-                             </div>
-                         `;
+                    // แสดงข้อความตามประเภท
+                    if (message.sender === 'admin') {
+                        const messageElement = document.createElement('div');
+                        messageElement.className = 'message bot-message';
+                        messageElement.setAttribute('data-message-id', message.timestamp);
+                        messageElement.innerHTML = `
+                            <div class="message-avatar">
+                                <img src="assets/icons/chat-avatar.jpg" alt="Admin">
+                            </div>
+                            <div class="message-content admin-message">
+                                <p>${escapeHTML(message.text)}</p>
+                                <small>${escapeHTML(message.adminName || 'Admin')}</small>
+                            </div>
+                        `;
 
-                         elements.chatMessages.appendChild(messageElement);
-                         scrollToBottom();
-                         saveChatToLocalStorage();
-                     }
-                     else if (message.sender === 'system') {
-                         addSystemMessage(message.text);
-                     }
-                 });
+                        elements.chatMessages.appendChild(messageElement);
+                        scrollToBottom();
+                        saveChatToLocalStorage();
+                    }
+                    else if (message.sender === 'system') {
+                        addSystemMessage(message.text);
+                    }
+                });
 
-                 // เมื่อมีการอัปเดตสถานะแอดมิน
-                 channel.listen('admin_status_change', (data) => {
-                     console.log('Admin status changed:', data);
+                // เมื่อมีการอัปเดตสถานะแอดมิน
+                channel.listen('admin_status_change', (data) => {
+                    console.log('Admin status changed:', data);
 
-                     chatState.adminActive = data.adminActive;
-                     updateAdminStatusDisplay(data.adminActive, data.adminName);
+                    // ⚠️ ตรวจสอบว่าเป็นสำหรับ session นี้หรือไม่
+                    if (data.room && data.room !== chatState.sessionId) {
+                        console.log('❌ Admin status change not for this session, ignoring');
+                        return;
+                    }
 
-                     if (data.adminActive) {
-                         const message = `${data.adminName || 'แอดมิน'}กำลังให้บริการคุณอยู่`;
-                         addSystemMessage(message);
-                     } else {
-                         addSystemMessage('แชทบอทกลับมาให้บริการแล้ว');
-                     }
-                 });
+                    chatState.adminActive = data.adminActive;
+                    updateAdminStatusDisplay(data.adminActive, data.adminName);
 
-                 // รับการแจ้งเตือนประวัติการสนทนา
-                 channel.listen('conversation_history', (data) => {
-                     console.log('Received conversation history:', data);
-                     if (data.messages && data.messages.length > 0) {
-                         displayChatHistory(data.messages);
-                     }
-                 });
+                    if (data.adminActive) {
+                        const message = `${data.adminName || 'แอดมิน'}กำลังให้บริการคุณอยู่`;
+                        addSystemMessage(message);
+                    } else {
+                        addSystemMessage('แชทบอทกลับมาให้บริการแล้ว');
+                    }
+                });
 
-             }).catch((error) => {
-                                    console.error('Error subscribing to PieSocket:', error);
+                // รับการแจ้งเตือนประวัติการสนทนา
+                channel.listen('conversation_history', (data) => {
+                    console.log('Received conversation history:', data);
+                    // ⚠️ ตรวจสอบว่าเป็นสำหรับ session นี้หรือไม่
+                    if (data.room && data.room !== chatState.sessionId) {
+                        console.log('❌ Conversation history not for this session, ignoring');
+                        return;
+                    }
 
-                                    // ลองเชื่อมต่อใหม่หลังจาก 3 วินาที
-                                    setTimeout(() => {
-                                        console.log('Retrying PieSocket connection...');
-                                        connectSocket();
-                                    }, 3000);
+                    if (data.messages && data.messages.length > 0) {
+                        displayChatHistory(data.messages);
+                    }
+                });
 
-                                    if (elements.socketStatus) {
-                                        elements.socketStatus.textContent = 'Reconnecting...';
-                                        elements.socketStatus.classList.add('disconnected');
-                                        elements.socketStatus.classList.remove('connected');
-                                    }
-                                });
+            }).catch((error) => {
+                console.error('Error subscribing to PieSocket:', error);
 
-             console.log('PieSocket v5 initialized');
-             return true;
-         } catch (error) {
-             console.error('Error connecting to PieSocket v5:', error);
-             console.error('Error details:', error.message);
-             console.error('PieSocket object structure:', PieSocket);
-             return false;
-         }
-     }
+                // ลองเชื่อมต่อใหม่หลังจาก 3 วินาที
+                setTimeout(() => {
+                    console.log('Retrying PieSocket connection...');
+                    connectSocket();
+                }, 3000);
+
+                if (elements.socketStatus) {
+                    elements.socketStatus.textContent = 'Reconnecting...';
+                    elements.socketStatus.classList.add('disconnected');
+                    elements.socketStatus.classList.remove('connected');
+                }
+            });
+
+            console.log('PieSocket v5 initialized for session:', chatState.sessionId);
+            return true;
+        } catch (error) {
+            console.error('Error connecting to PieSocket v5:', error);
+            console.error('Error details:', error.message);
+            console.error('PieSocket object structure:', PieSocket);
+            return false;
+        }
+    }
 
     // แสดงประวัติการสนทนา
     function displayChatHistory(messages) {
