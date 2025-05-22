@@ -210,123 +210,177 @@
        return false;
    }
     function connectSocket() {
-        // ตรวจสอบว่า PieSocket ถูกโหลดแล้วหรือไม่
-        if (typeof PieSocket === 'undefined') {
-            console.error('PieSocket library not loaded!');
-            return false;
-        }
+         console.log('=== Debug PieSocket v5 ===');
+         console.log('PieSocket type:', typeof PieSocket);
+         console.log('PieSocket object:', PieSocket);
 
-        try {
-            const clusterId = 's8661.sgp1';
-            const apiKey = 'mOGIGJTyKOmsesgjpchKEECKLekVGmuCSwNv2wpl';
-            const jwtToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwdWJsaWMtY2hhbm5lbC1vd253ZWItZGV2ZWxvcG1lbnQiLCJwbGF0Zm9ybSI6Im93bndlYiIsImlhdCI6MTc0NzkwMDg0MSwiZXhwIjoyMDYzMjYwODQxfQ.-QO3q_RExUV9NjOMpPuJXqnisGaH1934nN8xvlDJgZU';
+         // ตรวจสอบว่า PieSocket มีอยู่จริง
+         if (typeof PieSocket === 'undefined') {
+             console.error('PieSocket library not loaded!');
+             return false;
+         }
 
-            // ตรวจสอบว่ามีการเชื่อมต่ออยู่แล้วหรือไม่
-            if (chatState.socket && chatState.currentChannel) {
-                console.log('PieSocket is already connected');
-                return true;
-            }
+         try {
+             const clusterId = 's8661.sgp1';
+             const apiKey = 'mOGIGJTyKOmsesgjpchKEECKLekVGmuCSwNv2wpl';
+             const jwtToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwdWJsaWMtY2hhbm5lbC1vd253ZWItZGV2ZWxvcG1lbnQiLCJwbGF0Zm9ybSI6Im93bndlYiIsImlhdCI6MTc0NzkwMDg0MSwiZXhwIjoyMDYzMjYwODQxfQ.-QO3q_RExUV9NjOMpPuJXqnisGaH1934nN8xvlDJgZU';
 
-            // สร้างการเชื่อมต่อใหม่
-            chatState.socket = new PieSocket({
-                clusterId: clusterId,
-                apiKey: apiKey,
-                notifySelf: 1,
-                forceAuth: true,
-                jwt: jwtToken
-            });
+             // ตรวจสอบว่ามีการเชื่อมต่ออยู่แล้วหรือไม่
+             if (chatState.socket && chatState.currentChannel) {
+                 console.log('PieSocket is already connected');
+                 return true;
+             }
 
-            // กำหนด channel name ตาม pattern ใหม่
-            const environment = 'development'; // หรือ 'production' ตาม NODE_ENV
-            const channelName = `public-channel-ownweb-${environment}`;
+             console.log('Creating PieSocket v5 instance...');
 
-            chatState.socket.subscribe(channelName, {
-                platform: 'ownweb'
-            }).then((channel) => {
-                console.log('Connected to PieSocket with channel:', channelName);
-                chatState.currentChannel = channel;
+             // PieSocket v5 API
+             let pieSocketInstance;
 
-                // อัปเดตสถานะการเชื่อมต่อ
-                if (elements.socketStatus) {
-                    elements.socketStatus.textContent = 'Connected';
-                    elements.socketStatus.classList.add('connected');
-                    elements.socketStatus.classList.remove('disconnected');
-                }
+             // ลองหลายวิธีสร้าง instance
+             if (typeof PieSocket === 'function') {
+                 // Constructor pattern
+                 pieSocketInstance = new PieSocket({
+                     clusterId: clusterId,
+                     apiKey: apiKey,
+                     notifySelf: 1,
+                     forceAuth: true,
+                     jwt: jwtToken
+                 });
+             } else if (PieSocket && typeof PieSocket.default === 'function') {
+                 // ES6 module pattern
+                 pieSocketInstance = new PieSocket.default({
+                     clusterId: clusterId,
+                     apiKey: apiKey,
+                     notifySelf: 1,
+                     forceAuth: true,
+                     jwt: jwtToken
+                 });
+             } else if (PieSocket && typeof PieSocket.create === 'function') {
+                 // Factory pattern
+                 pieSocketInstance = PieSocket.create({
+                     clusterId: clusterId,
+                     apiKey: apiKey,
+                     notifySelf: 1,
+                     forceAuth: true,
+                     jwt: jwtToken
+                 });
+             } else {
+                 // ลองใช้ PieSocket โดยตรง
+                 console.log('Trying direct PieSocket usage...');
+                 pieSocketInstance = PieSocket({
+                     clusterId: clusterId,
+                     apiKey: apiKey,
+                     notifySelf: 1,
+                     forceAuth: true,
+                     jwt: jwtToken
+                 });
+             }
 
-                // เมื่อมีข้อความใหม่
-                channel.listen('new_message', (message) => {
-                    console.log('New message received via PieSocket:', message);
+             if (!pieSocketInstance) {
+                 throw new Error('Failed to create PieSocket instance');
+             }
 
-                    // เช็คว่าเป็นข้อความที่แสดงไปแล้วหรือไม่
-                    if (isMessageDuplicate(message)) {
-                        console.log('Duplicate message, ignoring:', message);
-                        return;
-                    }
+             chatState.socket = pieSocketInstance;
+             console.log('PieSocket v5 instance created:', chatState.socket);
 
-                    // แสดงข้อความตามประเภท
-                    if (message.sender === 'admin') {
-                        const messageElement = document.createElement('div');
-                        messageElement.className = 'message bot-message';
-                        messageElement.setAttribute('data-message-id', message.timestamp);
-                        messageElement.innerHTML = `
-                            <div class="message-avatar">
-                                <img src="assets/icons/chat-avatar.jpg" alt="Admin">
-                            </div>
-                            <div class="message-content admin-message">
-                                <p>${escapeHTML(message.text)}</p>
-                                <small>${escapeHTML(message.adminName || 'Admin')}</small>
-                            </div>
-                        `;
+             // กำหนด channel name
+             const environment = 'development';
+             const channelName = `public-channel-ownweb-${environment}`;
 
-                        elements.chatMessages.appendChild(messageElement);
-                        scrollToBottom();
-                        saveChatToLocalStorage();
-                    }
-                    else if (message.sender === 'system') {
-                        addSystemMessage(message.text);
-                    }
-                });
+             console.log('Subscribing to channel:', channelName);
 
-                // เมื่อมีการอัปเดตสถานะแอดมิน
-                channel.listen('admin_status_change', (data) => {
-                    console.log('Admin status changed:', data);
+             // Subscribe to channel
+             const subscribePromise = chatState.socket.subscribe(channelName, {
+                 platform: 'ownweb'
+             });
 
-                    chatState.adminActive = data.adminActive;
-                    updateAdminStatusDisplay(data.adminActive, data.adminName);
+             subscribePromise.then((channel) => {
+                 console.log('Connected to PieSocket with channel:', channelName);
+                 chatState.currentChannel = channel;
 
-                    if (data.adminActive) {
-                        const message = `${data.adminName || 'แอดมิน'}กำลังให้บริการคุณ`;
-                        addSystemMessage(message);
-                        addSystemMessage('บอทจะหยุดตอบกลับชั่วคราว แอดมินจะเข้ามาช่วยเหลือคุณ');
-                    } else {
-                        addSystemMessage('แชทบอทกลับมาให้บริการแล้ว');
-                    }
-                });
+                 // อัปเดตสถานะการเชื่อมต่อ
+                 if (elements.socketStatus) {
+                     elements.socketStatus.textContent = 'Connected';
+                     elements.socketStatus.classList.add('connected');
+                     elements.socketStatus.classList.remove('disconnected');
+                 }
 
-                // รับการแจ้งเตือนประวัติการสนทนา
-                channel.listen('conversation_history', (data) => {
-                    console.log('Received conversation history:', data);
-                    if (data.messages && data.messages.length > 0) {
-                        displayChatHistory(data.messages);
-                    }
-                });
+                 // เมื่อมีข้อความใหม่
+                 channel.listen('new_message', (message) => {
+                     console.log('New message received via PieSocket:', message);
 
-            }).catch((error) => {
-                console.error('Error subscribing to PieSocket:', error);
-                if (elements.socketStatus) {
-                    elements.socketStatus.textContent = 'Connection Error';
-                    elements.socketStatus.classList.add('disconnected');
-                    elements.socketStatus.classList.remove('connected');
-                }
-            });
+                     // เช็คว่าเป็นข้อความที่แสดงไปแล้วหรือไม่
+                     if (isMessageDuplicate(message)) {
+                         console.log('Duplicate message, ignoring:', message);
+                         return;
+                     }
 
-            console.log('PieSocket initialized');
-            return true;
-        } catch (error) {
-            console.error('Error connecting to PieSocket:', error);
-            return false;
-        }
-    }
+                     // แสดงข้อความตามประเภท
+                     if (message.sender === 'admin') {
+                         const messageElement = document.createElement('div');
+                         messageElement.className = 'message bot-message';
+                         messageElement.setAttribute('data-message-id', message.timestamp);
+                         messageElement.innerHTML = `
+                             <div class="message-avatar">
+                                 <img src="assets/icons/chat-avatar.jpg" alt="Admin">
+                             </div>
+                             <div class="message-content admin-message">
+                                 <p>${escapeHTML(message.text)}</p>
+                                 <small>${escapeHTML(message.adminName || 'Admin')}</small>
+                             </div>
+                         `;
+
+                         elements.chatMessages.appendChild(messageElement);
+                         scrollToBottom();
+                         saveChatToLocalStorage();
+                     }
+                     else if (message.sender === 'system') {
+                         addSystemMessage(message.text);
+                     }
+                 });
+
+                 // เมื่อมีการอัปเดตสถานะแอดมิน
+                 channel.listen('admin_status_change', (data) => {
+                     console.log('Admin status changed:', data);
+
+                     chatState.adminActive = data.adminActive;
+                     updateAdminStatusDisplay(data.adminActive, data.adminName);
+
+                     if (data.adminActive) {
+                         const message = `${data.adminName || 'แอดมิน'}กำลังให้บริการคุณ`;
+                         addSystemMessage(message);
+                         addSystemMessage('บอทจะหยุดตอบกลับชั่วคราว แอดมินจะเข้ามาช่วยเหลือคุณ');
+                     } else {
+                         addSystemMessage('แชทบอทกลับมาให้บริการแล้ว');
+                     }
+                 });
+
+                 // รับการแจ้งเตือนประวัติการสนทนา
+                 channel.listen('conversation_history', (data) => {
+                     console.log('Received conversation history:', data);
+                     if (data.messages && data.messages.length > 0) {
+                         displayChatHistory(data.messages);
+                     }
+                 });
+
+             }).catch((error) => {
+                 console.error('Error subscribing to PieSocket:', error);
+                 if (elements.socketStatus) {
+                     elements.socketStatus.textContent = 'Connection Error';
+                     elements.socketStatus.classList.add('disconnected');
+                     elements.socketStatus.classList.remove('connected');
+                 }
+             });
+
+             console.log('PieSocket v5 initialized');
+             return true;
+         } catch (error) {
+             console.error('Error connecting to PieSocket v5:', error);
+             console.error('Error details:', error.message);
+             console.error('PieSocket object structure:', PieSocket);
+             return false;
+         }
+     }
 
     // แสดงประวัติการสนทนา
     function displayChatHistory(messages) {
@@ -3341,6 +3395,7 @@ async function contactAdmin() {
     // เริ่มการทำงานของสคริปต์
     async function init() {
         console.log('เริ่มต้นการทำงานของแชท - Session ID:', chatState.sessionId);
+         await waitForPieSocket();
 
         // เช็คอิลิเมนต์อีกครั้ง (ป้องกันกรณีเรียกก่อนที่ DOM จะพร้อม)
         elements.chatToggleBtn = document.getElementById('chat-toggle-btn');
@@ -3407,6 +3462,29 @@ async function contactAdmin() {
         }
 
         console.log('รีเซ็ตสถานะแชทเรียบร้อยแล้ว');
+    }
+    function waitForPieSocket() {
+        return new Promise((resolve) => {
+            let attempts = 0;
+            const maxAttempts = 10;
+
+            const checkPieSocket = () => {
+                attempts++;
+                console.log(`Checking PieSocket attempt ${attempts}/${maxAttempts}`);
+
+                if (typeof PieSocket !== 'undefined') {
+                    console.log('PieSocket loaded successfully');
+                    resolve();
+                } else if (attempts >= maxAttempts) {
+                    console.error('PieSocket failed to load after', maxAttempts, 'attempts');
+                    resolve(); // ยังคงทำงานต่อแม้ PieSocket ไม่โหลด
+                } else {
+                    setTimeout(checkPieSocket, 500); // รอ 0.5 วินาทีแล้วลองใหม่
+                }
+            };
+
+            checkPieSocket();
+        });
     }
 
     // เรียกใช้การเริ่มต้นเมื่อโหลดหน้าเว็บ

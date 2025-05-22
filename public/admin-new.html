@@ -883,9 +883,13 @@
         </div>
 </div>
 
-<!-- JavaScript -->
-<script src="https://cdn.piesocket.com/v3/piesocket.min.js"></script>
-<script>
+    <script src="https://unpkg.com/piesocket-js@5"></script>
+
+    <script>
+        console.log('Admin page - PieSocket v5:', typeof PieSocket);
+        console.log('Admin page - PieSocket object:', PieSocket);
+    </script>
+    <script>
     // สถานะของแอดมิน
     const adminState = {
         currentSessionId: null,
@@ -942,16 +946,41 @@
         const apiKey = 'mOGIGJTyKOmsesgjpchKEECKLekVGmuCSwNv2wpl';
         const jwtToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwdWJsaWMtY2hhbm5lbC1vd253ZWItZGV2ZWxvcG1lbnQiLCJwbGF0Zm9ybSI6Im93bndlYiIsImlhdCI6MTc0NzkwMDg0MSwiZXhwIjoyMDYzMjYwODQxfQ.-QO3q_RExUV9NjOMpPuJXqnisGaH1934nN8xvlDJgZU';
 
-        adminState.socket = new PieSocket({
-            clusterId: clusterId,
-            apiKey: apiKey,
-            notifySelf: 1,
-            forceAuth: true,
-            jwt: jwtToken
-        });
+        console.log('Creating admin PieSocket v5 instance...');
 
-        // กำหนด channel name ตาม pattern ใหม่
-        const environment = 'development'; // หรือ 'production' ตาม NODE_ENV
+        // สร้าง PieSocket v5 instance
+        let pieSocketInstance;
+
+        if (typeof PieSocket === 'function') {
+            pieSocketInstance = new PieSocket({
+                clusterId: clusterId,
+                apiKey: apiKey,
+                notifySelf: 1,
+                forceAuth: true,
+                jwt: jwtToken
+            });
+        } else if (PieSocket && typeof PieSocket.default === 'function') {
+            pieSocketInstance = new PieSocket.default({
+                clusterId: clusterId,
+                apiKey: apiKey,
+                notifySelf: 1,
+                forceAuth: true,
+                jwt: jwtToken
+            });
+        } else {
+            pieSocketInstance = PieSocket({
+                clusterId: clusterId,
+                apiKey: apiKey,
+                notifySelf: 1,
+                forceAuth: true,
+                jwt: jwtToken
+            });
+        }
+
+        adminState.socket = pieSocketInstance;
+
+        // กำหนด channel name
+        const environment = 'development';
         const channelName = `public-channel-ownweb-${environment}`;
 
         adminState.socket.subscribe(channelName, {
@@ -2396,7 +2425,6 @@ document.addEventListener('DOMContentLoaded', init);
 
         }
     </script>
-<script src="env-config.js"></script>
 
 </body>
 </html>
