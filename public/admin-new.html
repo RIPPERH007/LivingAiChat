@@ -606,6 +606,69 @@
             color: rgba(255, 255, 255, 0.8);
         }
 
+        .pagination-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 15px 0;
+        background-color: white;
+        border-top: 1px solid var(--border);
+        gap: 5px;
+    }
+
+    .pagination-btn {
+        width: 36px;
+        height: 36px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        border: 1px solid var(--border);
+        background-color: white;
+        color: var(--text-dark);
+        font-size: 14px;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .pagination-btn:hover:not([disabled]) {
+        background-color: var(--bg-light);
+    }
+
+    .pagination-btn.active {
+        background-color: var(--purple);
+        color: white;
+        border-color: var(--purple);
+    }
+
+    .pagination-btn[disabled] {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .pagination-ellipsis {
+        width: 36px;
+        height: 36px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 14px;
+        color: var(--text-light);
+    }
+
+    /* Mobile Responsive */
+    @media (max-width: 768px) {
+        .pagination-container {
+            flex-wrap: wrap;
+        }
+
+        .pagination-btn {
+            width: 32px;
+            height: 32px;
+            font-size: 12px;
+        }
+    }
+
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(-20px); }
             to { opacity: 1; transform: translateY(0); }
@@ -675,10 +738,6 @@
                 <i class="fas fa-search"></i>
                 <input type="text" id="search-input" placeholder="ค้นหาตามชื่อ หรือเบอร์โทร">
             </div>
-            <button class="filter-btn" id="filter-btn">
-                <i class="fas fa-filter"></i>
-                ตัวกรอง
-            </button>
         </div>
 
         <!-- Conversation Table -->
@@ -702,6 +761,11 @@
                 </tbody>
             </table>
         </div>
+
+        <div class="pagination-container" id="pagination-container">
+            <!-- ปุ่มแบ่งหน้าจะถูกเพิ่มโดย JavaScript -->
+        </div>
+
     </div>
 
     <!-- Chat Panel -->
@@ -755,7 +819,13 @@
         currentWebId: '001', // Web ID สำหรับใช้กับ API
         apiBaseUrl: 'https://ownwebdev1.livinginsider.com/api/v1', // เพิ่ม Base URL สำหรับ API
         apiToken: 'b059a15197926350fb43271477779d0fc04f6a4701eb3367c999c59eeae1f890', // เพิ่ม Bearer Token
-        cachedData : {}
+        cachedData : {},
+        pagination : {
+            currentPage: 1,
+            itemsPerPage: 10,
+            totalPages: 1
+        },
+
 
     };
 
@@ -780,7 +850,9 @@
 
         waitingCount: document.querySelector('.waiting-count'),
         answeredCount: document.querySelector('.answered-count'),
-        allCount: document.querySelector('.all-count')
+        allCount: document.querySelector('.all-count'),
+            paginationContainer: document.getElementById('pagination-container'),
+
     };
 
     // เชื่อมต่อ Socket.IO
@@ -910,8 +982,8 @@ function loadConversations() {
                 }
 
                 data.data.sort((a, b) => {
-                        const timeA = a.updatetime || (a.message && a.message.create_date) || 0;
-                        const timeB = b.updatetime || (b.message && b.message.create_date) || 0;
+                        const timeA = a.update_time || (a.message && a.message.create_date) || 0;
+                        const timeB = b.update_time || (b.message && b.message.create_date) || 0;
                         return timeA - timeB; // เรียงจากเก่าไปใหม่ (ให้ตรงกับ socket)
                 });
 
@@ -936,7 +1008,7 @@ function loadConversations() {
                         if (existingConv && lastMessage) {
                             // ถ้ามีข้อมูลเดิมอยู่แล้ว และเวลาล่าสุดของข้อมูลเดิมใหม่กว่า ให้ข้าม
                             const existingTime = existingConv.lastActivity || 0;
-                            const newTime = lastMessage.create_date || lastMessage.timestamp || room.updatetime || 0;
+                            const newTime = lastMessage.create_date || lastMessage.timestamp || room.update_time || 0;
                             if (existingTime > newTime) {
                                 return;
                             }
@@ -948,7 +1020,7 @@ function loadConversations() {
                         webId: adminState.currentWebId,
                         userInfo: room.contact_info || {},
                         status: room.status_reply ? 'answered' : 'waiting',
-                        lastActivity: room.updatetime || Date.now(),
+                        lastActivity: room.update_time || Date.now(),
                         lastMessage: lastMessage ? {
                             text: lastMessage.message || lastMessage.detail || '',
                             sender: lastMessage.sender || 'user',
@@ -1049,10 +1121,12 @@ function renderConversationList() {
     // กรองการสนทนาตามสถานะและข้อความค้นหา
     let filteredConversations = Object.values(adminState.conversations);
 
+    // กรองตามสถานะ (waiting, answered, all)
     if (currentStatus !== 'all') {
         filteredConversations = filteredConversations.filter(conv => conv.status === currentStatus);
     }
 
+    // กรองตามข้อความค้นหา
     if (searchText) {
         filteredConversations = filteredConversations.filter(conv => {
             const userInfo = conv.userInfo || {};
@@ -1070,20 +1144,36 @@ function renderConversationList() {
 
     // เรียงลำดับตามเวลาล่าสุด
     filteredConversations.sort((a, b) => {
-    // ใช้เวลาล่าสุดในการเรียง (lastActivity หรือ timestamp ของ lastMessage)
-    const timeA = a.lastActivity || (a.lastMessage && a.lastMessage.timestamp) || 0;
-    const timeB = b.lastActivity || (b.lastMessage && b.lastMessage.timestamp) || 0;
-    return timeB - timeA; // เรียงจากใหม่ไปเก่า เพื่อให้ข้อความล่าสุดขึ้นมาด้านบน
-});
+        // ใช้เวลาล่าสุดในการเรียง (lastActivity หรือ timestamp ของ lastMessage)
+        const timeA = a.lastActivity || (a.lastMessage && a.lastMessage.timestamp) || 0;
+        const timeB = b.lastActivity || (b.lastMessage && b.lastMessage.timestamp) || 0;
+        return timeB - timeA; // เรียงจากใหม่ไปเก่า เพื่อให้ข้อความล่าสุดขึ้นมาด้านบน
+    });
+
+    // คำนวณจำนวนหน้าทั้งหมด
+    adminState.pagination.totalPages = Math.ceil(filteredConversations.length / adminState.pagination.itemsPerPage);
+
+    // ตรวจสอบว่าหน้าปัจจุบันถูกต้องหรือไม่
+    if (adminState.pagination.currentPage > adminState.pagination.totalPages) {
+        adminState.pagination.currentPage = Math.max(1, adminState.pagination.totalPages);
+    }
+
     // สร้าง HTML
     if (filteredConversations.length === 0) {
         elements.conversationList.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">ไม่พบข้อมูลการสนทนาที่ตรงกับเงื่อนไข</td></tr>';
+        // ซ่อนปุ่มแบ่งหน้า
+        elements.paginationContainer.style.display = 'none';
         return;
     }
 
+    // แบ่งข้อมูลตามหน้า
+    const startIndex = (adminState.pagination.currentPage - 1) * adminState.pagination.itemsPerPage;
+    const endIndex = startIndex + adminState.pagination.itemsPerPage;
+    const paginatedConversations = filteredConversations.slice(startIndex, endIndex);
+
     let html = '';
 
-    filteredConversations.forEach(conv => {
+    paginatedConversations.forEach(conv => {
         const userInfo = conv.userInfo || {};
         const name = userInfo.name || 'ไม่ระบุชื่อ';
         const email = userInfo.email || '-';
@@ -1117,6 +1207,9 @@ function renderConversationList() {
 
     elements.conversationList.innerHTML = html;
 
+    // อัปเดตแถบแบ่งหน้า
+    updatePaginationControls(filteredConversations.length);
+
     // เพิ่ม Event Listeners สำหรับปุ่มแชท
     document.querySelectorAll('.chat-btn').forEach(button => {
         button.addEventListener('click', function() {
@@ -1124,6 +1217,100 @@ function renderConversationList() {
             openChatSession(sessionId);
         });
     });
+}
+
+function updatePaginationControls(totalItems) {
+    // ตรวจสอบว่ามี container สำหรับการแบ่งหน้าหรือไม่
+    if (!elements.paginationContainer) {
+        console.error('ไม่พบ pagination container');
+        return;
+    }
+
+    // คำนวณจำนวนหน้าทั้งหมด
+    const totalPages = Math.ceil(totalItems / adminState.pagination.itemsPerPage);
+    adminState.pagination.totalPages = totalPages;
+
+    // ถ้ามีเพียงหน้าเดียว ให้ซ่อนแถบแบ่งหน้า
+    if (totalPages <= 1) {
+        elements.paginationContainer.style.display = 'none';
+        return;
+    }
+
+    // แสดงแถบแบ่งหน้า
+    elements.paginationContainer.style.display = 'flex';
+
+    // สร้าง HTML สำหรับปุ่มแบ่งหน้า
+    let paginationHTML = '';
+
+    // ปุ่มก่อนหน้า
+    const prevDisabled = adminState.pagination.currentPage <= 1 ? 'disabled' : '';
+    paginationHTML += `<button class="pagination-btn prev ${prevDisabled}" ${prevDisabled}><i class="fas fa-chevron-left"></i></button>`;
+
+    // ปุ่มหน้าแรก
+    if (adminState.pagination.currentPage > 3) {
+        paginationHTML += `<button class="pagination-btn page-btn" data-page="1">1</button>`;
+
+        if (adminState.pagination.currentPage > 4) {
+            paginationHTML += `<span class="pagination-ellipsis">...</span>`;
+        }
+    }
+
+    // ปุ่มหน้าตัวเลข
+    const startPage = Math.max(1, adminState.pagination.currentPage - 1);
+    const endPage = Math.min(totalPages, adminState.pagination.currentPage + 1);
+
+    for (let i = startPage; i <= endPage; i++) {
+        const active = i === adminState.pagination.currentPage ? 'active' : '';
+        paginationHTML += `<button class="pagination-btn page-btn ${active}" data-page="${i}">${i}</button>`;
+    }
+
+    // ปุ่มหน้าสุดท้าย
+    if (adminState.pagination.currentPage < totalPages - 2) {
+        if (adminState.pagination.currentPage < totalPages - 3) {
+            paginationHTML += `<span class="pagination-ellipsis">...</span>`;
+        }
+
+        paginationHTML += `<button class="pagination-btn page-btn" data-page="${totalPages}">${totalPages}</button>`;
+    }
+
+    // ปุ่มถัดไป
+    const nextDisabled = adminState.pagination.currentPage >= totalPages ? 'disabled' : '';
+    paginationHTML += `<button class="pagination-btn next ${nextDisabled}" ${nextDisabled}><i class="fas fa-chevron-right"></i></button>`;
+
+    // อัปเดต HTML
+    elements.paginationContainer.innerHTML = paginationHTML;
+
+    // เพิ่ม Event Listeners สำหรับปุ่มแบ่งหน้า
+    elements.paginationContainer.querySelectorAll('.page-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const page = parseInt(this.dataset.page);
+            adminState.pagination.currentPage = page;
+            renderConversationList();
+        });
+    });
+
+    // ปุ่มก่อนหน้า
+    const prevButton = elements.paginationContainer.querySelector('.prev');
+    if (prevButton && !prevButton.hasAttribute('disabled')) {
+        prevButton.addEventListener('click', function() {
+            adminState.pagination.currentPage--;
+            renderConversationList();
+        });
+    }
+
+    // ปุ่มถัดไป
+    const nextButton = elements.paginationContainer.querySelector('.next');
+    if (nextButton && !nextButton.hasAttribute('disabled')) {
+        nextButton.addEventListener('click', function() {
+            adminState.pagination.currentPage++;
+            renderConversationList();
+        });
+    }
+}
+
+function resetPagination() {
+    adminState.pagination.currentPage = 1;
+    renderConversationList();
 }
 
 // เปิดห้องแชท
@@ -1177,6 +1364,23 @@ function openChatSession(sessionId) {
 
       // แสดงประวัติการสนทนา
       if (data.messages && data.messages.length > 0) {
+        // ตรวจสอบข้อมูลทุกข้อความที่ได้รับจาก API
+        data.messages.forEach(msg => {
+          // เพิ่ม debug logging เพื่อตรวจสอบข้อมูลแต่ละข้อความ
+          console.log(`ข้อความ ID: ${msg.create_date} Type: ${msg.type} Sender: ${msg.sender}`);
+
+          // ตรวจสอบว่ามี options หรือไม่
+          if (msg.options) {
+            console.log(`มี options: ${JSON.stringify(msg.options)}`);
+          }
+
+          // ตรวจสอบเพิ่มเติมสำหรับข้อความประเภท 2
+          if (msg.type === 2) {
+            console.log(`ข้อความประเภท 2 (options): ${JSON.stringify(msg)}`);
+          }
+        });
+
+        // เรียกใช้ displayChatHistory แบบที่ปรับปรุงแล้ว
         displayChatHistory(data.messages);
       } else {
         elements.adminChatMessages.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">ยังไม่มีข้อความในการสนทนานี้</div>';
@@ -1197,6 +1401,7 @@ function openChatSession(sessionId) {
   }
 }
 
+
 // แสดงประวัติการสนทนา
 function displayChatHistory(messages) {
     if (!messages || messages.length === 0) {
@@ -1207,82 +1412,143 @@ function displayChatHistory(messages) {
     // ล้างเนื้อหาก่อนแสดงข้อความใหม่
     elements.adminChatMessages.innerHTML = '';
 
-    // สำคัญ: เรียงข้อความจากเก่าไปใหม่ก่อนแสดงผล
-    // เนื่องจาก messages จาก API เรียงจากใหม่ไปเก่า
+    // เรียงข้อความจากเก่าไปใหม่
     const sortedMessages = [...messages].sort((a, b) => {
         return a.create_date - b.create_date;
     });
 
     // แสดงข้อความตามลำดับที่เรียงใหม่
     sortedMessages.forEach(msg => {
-        // แปลงข้อมูลให้ตรงกับรูปแบบที่ใช้ในฟังก์ชัน addMessageToChat
-        const messageData = {
-            sender: msg.sender,
-            text: msg.message || '', // รองรับทั้ง message และ text
-            timestamp: msg.create_date,
-            adminName: msg.adminName || (msg.sender === 'admin' ? adminState.adminInfo.name : undefined),
-            room: adminState.currentSessionId
-        };
+        console.log(`กำลังแสดงข้อความ: type=${msg.type}, sender=${msg.sender}, ` +
+                   `มี options=${Boolean(msg.options)}, text="${msg.message || ''}"`);
 
-        // ตรวจสอบข้อมูลเพิ่มเติม (เช่น item_list สำหรับแสดงรายการอสังหาริมทรัพย์)
-        if (msg.type === 3 && msg.item_list && Array.isArray(msg.item_list)) {
-            messageData.payload = {
-                richContent: [
-                    [
-                        {
-                            type: "info",
-                            title: msg.message || "รายการอสังหาริมทรัพย์",
-                            subtitle: `พบทั้งหมด ${msg.item_list.length} รายการ`
-                        },
-                        ...msg.item_list.map(item => ({
-                            type: "custom_card",
-                            property_data: {
-                                id: item.web_id,
-                                imageUrl: item.photo || '',
-                                title: item.name || 'ไม่ระบุชื่อ',
-                                location: item.zone_name || 'ไม่ระบุที่ตั้ง',
-                                price: item.price || '-',
-                                tag: item.tag || 'ขาย',
-                                link: item.link || '#'
-                            }
-                        }))
-                    ]
-                ]
-            };
+        // ข้อความประเภท 2 (มี options) ให้แสดงเป็น chips
+        if (msg.type === 2 && msg.options) {
+            const messageElement = document.createElement('div');
+            messageElement.className = 'message bot-message';
+            messageElement.setAttribute('data-message-id', msg.create_date);
 
-            // เพิ่มปุ่ม "ดูเพิ่มเติม" ถ้ามี
-            if (msg.more && msg.more.link) {
-                messageData.payload.richContent[0].push({
-                    type: "button",
-                    options: [
-                        {
-                            text: msg.more.txt || "ดูเพิ่มเติม",
-                            link: msg.more.link
-                        }
-                    ]
-                });
+            // สร้าง HTML สำหรับ chips
+            let chipsHTML = '';
+            try {
+                // ตรวจสอบว่า options เป็น array หรือไม่
+                const options = Array.isArray(msg.options) ? msg.options :
+                              (typeof msg.options === 'string' ? JSON.parse(msg.options) : []);
+
+                if (options.length > 0) {
+                    chipsHTML = `
+                        <div class="rich-chips">
+                            ${options.map(option => {
+                                const text = typeof option === 'object' ? option.text : option;
+                                return `<span class="rich-chip">${escapeHTML(text)}</span>`;
+                            }).join('')}
+                        </div>
+                    `;
+                }
+            } catch (e) {
+                console.error('Error parsing options:', e);
             }
-        } else if (msg.type === 2 && msg.options && Array.isArray(msg.options)) {
-            // แสดงตัวเลือกเป็น chips
-            messageData.payload = {
-                richContent: [
-                    [
-                        {
-                            type: "chips",
-                            options: msg.options.map(option => ({ text: option }))
-                        }
-                    ]
-                ]
-            };
-        }
 
-        addMessageToChat(messageData);
+            // สร้าง HTML สำหรับข้อความและ chips
+            messageElement.innerHTML = `
+                <div class="message-avatar">
+                    <img src="assets/icons/chat-avatar.jpg" alt="Bot">
+                </div>
+                <div class="message-content">
+                    <p>${escapeHTML(msg.message || '')}</p>
+                    ${chipsHTML}
+                    <small>ส่งโดย : บอท</small>
+                </div>
+            `;
+
+            // เพิ่มข้อความลงในพื้นที่แชท
+            elements.adminChatMessages.appendChild(messageElement);
+
+            // เพิ่ม event listeners สำหรับ chips
+            const chips = messageElement.querySelectorAll('.rich-chip');
+            chips.forEach(chip => {
+                chip.addEventListener('click', function() {
+                    const text = this.textContent;
+                    console.log('Chip clicked:', text);
+
+                    // ส่งข้อความเมื่อคลิก chip
+                    const messageId = Date.now();
+                    addMessageToChat({
+                        sender: 'admin',
+                        text: text,
+                        adminName: adminState.adminInfo.name,
+                        timestamp: messageId,
+                        room: adminState.currentSessionId
+                    });
+
+                    // ส่งข้อความผ่าน API และ Socket
+                    sendAdminMessage(text);
+                });
+            });
+        }
+        // ข้อความประเภทอื่นๆ
+        else {
+            const messageData = {
+                sender: msg.sender || 'bot',
+                text: msg.message || '',
+                timestamp: msg.create_date,
+                adminName: msg.adminName || (msg.sender === 'admin' ? adminState.adminInfo.name : undefined),
+                room: adminState.currentSessionId
+            };
+
+            // เพิ่มข้อมูล payload ถ้ามี
+            if (msg.type === 3 && msg.item_list) {
+                messageData.payload = {
+                    richContent: [
+                        [
+                            {
+                                type: "info",
+                                title: msg.message || "รายการอสังหาริมทรัพย์",
+                                subtitle: `พบทั้งหมด ${msg.item_list.length} รายการ`
+                            },
+                            ...msg.item_list.map(item => ({
+                                type: "custom_card",
+                                property_data: {
+                                    id: item.web_id,
+                                    imageUrl: item.photo || '',
+                                    title: item.name || 'ไม่ระบุชื่อ',
+                                    location: item.zone_name || 'ไม่ระบุที่ตั้ง',
+                                    price: item.price || '-',
+                                    tag: item.tag || 'ขาย',
+                                    link: item.link || '#'
+                                }
+                            }))
+                        ]
+                    ]
+                };
+            }
+
+            // ใช้ addMessageToChat สำหรับข้อความทั่วไป
+            addMessageToChat(messageData);
+        }
     });
 
     // เลื่อนไปที่ข้อความล่าสุด
     scrollToBottom();
 }
 
+// เพิ่มฟังก์ชัน renderChips เพื่อใช้ในฟังก์ชัน addMessageToChat
+function renderChips(item) {
+    if (!item || !item.options || !Array.isArray(item.options) || item.options.length === 0) {
+        return '';
+    }
+
+    return `
+        <div class="rich-chips">
+            ${item.options.map(option => {
+                const text = typeof option === 'object' ? option.text || '' : option || '';
+                return `<span class="rich-chip">${escapeHTML(text)}</span>`;
+            }).join('')}
+        </div>
+    `;
+}
+
+// แก้ไขฟังก์ชัน addMessageToChat เพื่อเรียกใช้ฟังก์ชัน renderChips
 function addMessageToChat(data) {
     // ตรวจสอบว่าเป็นข้อความซ้ำหรือไม่
     if (isMessageDuplicate(data.timestamp)) {
@@ -1319,17 +1585,41 @@ function addMessageToChat(data) {
         `;
     } else if (data.sender === 'bot') {
         // ข้อความจากบอท
-        let richContentHtml = '';
-        if (data.payload) {
-            richContentHtml = renderRichContent(data.payload);
-        }
 
+        // เริ่มต้นด้วยข้อความพื้นฐาน
         messageHTML = `
             <div class="message-content">
                 <p>${escapeHTML(data.text)}</p>
-                ${richContentHtml}
-                <small>ส่งโดย : บอท</small>
+        `;
 
+        // ถ้ามี payload ให้เพิ่ม rich content
+        if (data.payload) {
+            const richContentHtml = renderRichContent(data.payload);
+            if (richContentHtml) {
+                messageHTML += richContentHtml;
+            }
+        }
+
+        // ถ้ามี options (type 2) ให้แสดงเป็น chips
+        if (data.type === "2" && data.options && Array.isArray(data.options) && data.options.length > 0) {
+            // แปลง options ให้อยู่ในรูปแบบที่ renderChips ต้องการ
+            const options = data.options.map(opt => {
+                return typeof opt === 'object' ? opt : { text: opt };
+            });
+
+            const chipsItem = {
+                type: 'chips',
+                options: options
+            };
+
+            // สร้าง HTML สำหรับ chips
+            const chipsHtml = renderChips(chipsItem);
+            messageHTML += chipsHtml;
+        }
+
+        // เพิ่ม label ผู้ส่งและปิด div
+        messageHTML += `
+                <small>ส่งโดย : บอท</small>
             </div>
         `;
     } else if (data.sender === 'admin') {
@@ -1355,6 +1645,14 @@ function addMessageToChat(data) {
     // เพิ่มข้อความลงในพื้นที่แชท
     elements.adminChatMessages.appendChild(messageDiv);
 
+    // ถ้าเป็นข้อความที่มี chips หรือ rich content ให้เพิ่ม event listeners
+    if ((data.type === "2" && data.options) || data.payload) {
+        // ถ้ามีฟังก์ชัน addInteractiveListeners ก็เรียกใช้
+        if (typeof addInteractiveListeners === 'function') {
+            addInteractiveListeners(messageDiv);
+        }
+    }
+
     // เลื่อนไปที่ข้อความล่าสุด
     scrollToBottom();
 }
@@ -1362,6 +1660,21 @@ function addMessageToChat(data) {
 // ตรวจสอบข้อความซ้ำ
 function isMessageDuplicate(messageId) {
     return document.querySelector(`.message[data-message-id="${messageId}"]`) !== null;
+}
+
+function renderChips(item) {
+    if (!item || !item.options || !Array.isArray(item.options) || item.options.length === 0) {
+        return '';
+    }
+
+    return `
+        <div class="rich-chips">
+            ${item.options.map(option => {
+                const text = typeof option === 'object' ? option.text || '' : option || '';
+                return `<span class="rich-chip">${escapeHTML(text)}</span>`;
+            }).join('')}
+        </div>
+    `;
 }
 
 // เลื่อนหน้าต่างแชทไปที่ล่างสุด
@@ -1612,8 +1925,6 @@ function escapeHTML(text) {
 
 // เริ่มต้นการทำงาน
 function init() {
-
-
     // เชื่อมต่อ Socket.IO
     connectSocket();
 
@@ -1630,14 +1941,15 @@ function init() {
             // เพิ่มคลาส active ให้แท็บที่คลิก
             this.classList.add('active');
 
-            // เรียกใช้การแสดงรายการการสนทนาตามแท็บที่เลือก
-            renderConversationList();
+            // รีเซ็ตการแบ่งหน้าเมื่อเปลี่ยนแท็บ
+            resetPagination();
         });
     });
 
     // การค้นหา
     elements.searchInput.addEventListener('input', function() {
-        renderConversationList();
+        // รีเซ็ตการแบ่งหน้าเมื่อมีการค้นหา
+        resetPagination();
     });
 
     // การส่งข้อความ
@@ -1660,44 +1972,43 @@ function init() {
     loadConversations();
 
     adminState.isLoading = false;
-adminState.lastLoadTime = 0;
+    adminState.lastLoadTime = 0;
 
-setInterval(() => {
-    // ไม่โหลดถ้าเพิ่งโหลดไปเมื่อไม่นาน (ภายใน 3 วินาที)
-    const now = Date.now();
-    if (now - adminState.lastLoadTime < 3000) {
-        console.log('เพิ่งโหลดข้อมูลไปเมื่อไม่นาน รอก่อน');
-        return;
-    }
+    setInterval(() => {
+        // ไม่โหลดถ้าเพิ่งโหลดไปเมื่อไม่นาน (ภายใน 3 วินาที)
+        const now = Date.now();
+        if (now - adminState.lastLoadTime < 3000) {
+            console.log('เพิ่งโหลดข้อมูลไปเมื่อไม่นาน รอก่อน');
+            return;
+        }
 
-    // ตรวจสอบว่ากำลังโหลดข้อมูลอยู่หรือไม่
-    if (adminState.isLoading) {
-        console.log('กำลังโหลดข้อมูลอยู่แล้ว รอรอบถัดไป');
-        return;
-    }
+        // ตรวจสอบว่ากำลังโหลดข้อมูลอยู่หรือไม่
+        if (adminState.isLoading) {
+            console.log('กำลังโหลดข้อมูลอยู่แล้ว รอรอบถัดไป');
+            return;
+        }
 
-    // ถ้ากำลังเปิดห้องแชทอยู่ ไม่ต้องโหลดใหม่ทั้งหมด
-    if (adminState.currentSessionId) {
-        console.log('มีการเปิดห้องแชทอยู่ จึงไม่โหลดรายการทั้งหมดใหม่');
-        // อาจเรียกฟังก์ชันที่โหลดเฉพาะรายการ แต่ไม่กระทบห้องปัจจุบัน
-    } else {
-        console.log('ไม่มีการเปิดห้องแชท โหลดรายการใหม่');
+        // ถ้ากำลังเปิดห้องแชทอยู่ ไม่ต้องโหลดใหม่ทั้งหมด
+        if (adminState.currentSessionId) {
+            console.log('มีการเปิดห้องแชทอยู่ จึงไม่โหลดรายการทั้งหมดใหม่');
+            // อาจเรียกฟังก์ชันที่โหลดเฉพาะรายการ แต่ไม่กระทบห้องปัจจุบัน
+        } else {
+            console.log('ไม่มีการเปิดห้องแชท โหลดรายการใหม่');
 
-        // ตั้งค่าสถานะการโหลด
-        adminState.isLoading = true;
+            // ตั้งค่าสถานะการโหลด
+            adminState.isLoading = true;
 
-        // โหลดข้อมูลใหม่ และรีเซ็ตสถานะเมื่อเสร็จสิ้น
-        loadConversations()
-            .then(() => {
-                adminState.lastLoadTime = Date.now();
-            })
-            .finally(() => {
-                adminState.isLoading = false;
-            });
-    }
-}, 5000);
-
-    }
+            // โหลดข้อมูลใหม่ และรีเซ็ตสถานะเมื่อเสร็จสิ้น
+            loadConversations()
+                .then(() => {
+                    adminState.lastLoadTime = Date.now();
+                })
+                .finally(() => {
+                    adminState.isLoading = false;
+                });
+        }
+    }, 5000);
+}
 
 // เริ่มทำงานเมื่อโหลดหน้าเสร็จ
 document.addEventListener('DOMContentLoaded', init);

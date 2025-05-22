@@ -31,10 +31,11 @@
         apiBaseUrl: 'https://ownwebdev1.livinginsider.com/api/v1', // Base URL สำหรับ API
         apiToken: 'b059a15197926350fb43271477779d0fc04f6a4701eb3367c999c59eeae1f890', // Bearer Token
         propertySearch: {
-            transaction_type: null, // ประเภทธุรกรรม (เช่า/ซื้อ)
+            post_type: null, // ประเภทธุรกรรม (เช่า/ซื้อ)
             building_type: null,    // ประเภทอสังหาริมทรัพย์
-            location: null,         // ทำเลที่ตั้ง
+            keyword: null,         // ทำเลที่ตั้ง
             price: null,            // ราคา (และค้นหาทันที)
+            zone_id: null,
             isComplete: false,
             searchReady: false
         },
@@ -285,79 +286,7 @@
                         // บันทึกข้อมูลลง localStorage
                         saveChatToLocalStorage();
                     }
-                    else if (message.sender === 'bot') {
-                        // ข้อความจากบอท
-                        // จัดการกับ payload ถ้ามี
-                        if (message.payload) {
-                            const richContentHtml = processRichContent(message.payload);
-
-                            if (richContentHtml) {
-                                const messageElement = document.createElement('div');
-                                messageElement.className = 'message bot-message';
-                                messageElement.setAttribute('data-message-id', message.timestamp);
-                                messageElement.innerHTML = `
-                                    <div class="message-avatar">
-                                        <img src="assets/icons/chat-avatar.jpg" alt="Bot">
-                                    </div>
-                                    <div class="message-content">
-                                        ${richContentHtml}
-                                    </div>
-                                `;
-
-                                elements.chatMessages.appendChild(messageElement);
-                                addInteractiveListeners(messageElement);
-                                scrollToBottom();
-
-                                // บันทึกข้อมูลลง localStorage
-                                saveChatToLocalStorage();
-                            }
-                            else if (message.type === "2" && message.options && Array.isArray(message.options)) {
-                                // สร้าง UI chips จาก options
-                                const chipsItem = {
-                                    type: 'chips',
-                                    options: message.options.map(option => ({
-                                        text: option
-                                    }))
-                                };
-
-                                // สร้าง HTML สำหรับ chips
-                                const chipsHtml = renderChips(chipsItem);
-
-                                // สร้าง message element
-                                const messageElement = document.createElement('div');
-                                messageElement.className = 'message bot-message';
-                                messageElement.setAttribute('data-message-id', message.timestamp);
-                                messageElement.innerHTML = `
-                                    <div class="message-avatar">
-                                        <img src="assets/icons/chat-avatar.jpg" alt="Bot">
-                                    </div>
-                                    <div class="message-content">
-                                        <p>${escapeHTML(message.text || '')}</p>
-                                        ${chipsHtml}
-                                    </div>
-                                `;
-
-                                // เพิ่มลงใน DOM
-                                elements.chatMessages.appendChild(messageElement);
-
-                                // เพิ่ม Event Listeners สำหรับ chips
-                                addInteractiveListeners(messageElement);
-
-                                // เลื่อนไปที่ข้อความล่าสุด
-                                scrollToBottom();
-
-                                // บันทึกข้อมูลลง localStorage
-                                saveChatToLocalStorage();
-                            }
-                            else if (message.text) {
-                                // ถ้ามีข้อความธรรมดา
-                                addMessage('bot', message.text, '', message.timestamp);
-                            }
-                        } else if (message.text) {
-                            // ข้อความธรรมดาจากบอท
-                            addMessage('bot', message.text, '', message.timestamp);
-                        }
-                    } else if (message.sender === 'system') {
+                    else if (message.sender === 'system') {
                         // ข้อความระบบ
                         addSystemMessage(message.text);
                     }
@@ -1200,6 +1129,15 @@
 
 
     function showGreetingMessage() {
+
+        const chipsItem = {
+                    type: 'chips',
+                    options: [
+                        { text: 'ต้องการหาซื้อ' },
+                        { text: 'ต้องการหาเช่า' },
+                        { text: 'ติดต่อเจ้าหน้าที่' }
+                    ]
+                };
         // สร้าง message element ใหม่
         const messageId = Date.now();
         const messageElement = document.createElement('div');
@@ -1223,15 +1161,16 @@
         `;
 
         // เพิ่มข้อความลงใน DOM
-        elements.chatMessages.appendChild(messageElement);
+//        elements.chatMessages.appendChild(messageElement);
 
         // เพิ่ม Event Listeners สำหรับ chips
         addInteractiveListeners(messageElement);
 
         // เลื่อนไปที่ข้อความล่าสุด
         scrollToBottom();
+        const messageText = '👋 สวัสดีค่ะ ฉันคือผู้ช่วยอัจฉริยะของ My Property พร้อมช่วยคุณค้นหา ซื้อ ขาย หรือเช่าอสังหาฯ แบบง่าย ๆ สนใจเรื่องไหน ถามกับฉันได้เลย!';
 
-        addMessage('bot', messageText, '', null, options);
+        addMessage('bot', messageText, '', null, chipsItem.options);
 
     }
     function showTransactionTypeOptions() {
@@ -1266,7 +1205,7 @@
         `;
 
         // เพิ่มลงใน DOM
-        elements.chatMessages.appendChild(messageElement);
+//        elements.chatMessages.appendChild(messageElement);
 
         // เพิ่ม Event Listeners สำหรับ chips
         addInteractiveListeners(messageElement);
@@ -1287,7 +1226,7 @@
                 { text: 'คอนโด' },
                 { text: 'บ้าน' },
                 { text: 'ทาวน์โฮม' },
-                { text: 'ที่ดิน' },
+                { text: 'อาคารพาณิชย์' },
                 { text: 'อพาร์ทเม้นท์' }
             ]
         };
@@ -1297,11 +1236,11 @@
 
         // สร้างข้อความให้เหมาะสมกับประเภทธุรกรรม
         let messageText = 'คุณสนใจอสังหาริมทรัพย์ประเภทไหนคะ?';
-        if (chatState.propertySearch.transaction_type === 'ซื้อ') {
+        if (chatState.propertySearch.post_type === 'ซื้อ') {
             messageText = 'คุณสนใจซื้ออสังหาริมทรัพย์ประเภทไหนคะ?';
-        } else if (chatState.propertySearch.transaction_type === 'เช่า') {
+        } else if (chatState.propertySearch.post_type === 'เช่า') {
             messageText = 'คุณสนใจเช่าอสังหาริมทรัพย์ประเภทไหนคะ?';
-        } else if (chatState.propertySearch.transaction_type === 'ขาย') {
+        } else if (chatState.propertySearch.post_type === 'ขาย') {
             messageText = 'คุณสนใจขายอสังหาริมทรัพย์ประเภทไหนคะ?';
         }
 
@@ -1321,7 +1260,7 @@
         `;
 
         // เพิ่มลงใน DOM
-        elements.chatMessages.appendChild(messageElement);
+//        elements.chatMessages.appendChild(messageElement);
 
         // เพิ่ม Event Listeners สำหรับ chips
         addInteractiveListeners(messageElement);
@@ -1342,10 +1281,10 @@
             return; // ออกจากฟังก์ชันโดยไม่แสดงข้อความซ้ำ
         }
 
-        const popularLocations = [
-            'กรุงเทพ', 'เชียงใหม่', 'ภูเก็ต', 'พัทยา', 'หัวหิน',
-            'รัชดา', 'สุขุมวิท', 'ลาดพร้าว', 'อโศก', 'ทองหล่อ'
-        ];
+         const popularLocations = chatState.popularLocations || [
+                'กรุงเทพ', 'เชียงใหม่', 'ภูเก็ต', 'พัทยา', 'หัวหิน',
+                'รัชดา', 'สุขุมวิท', 'ลาดพร้าว', 'อโศก', 'ทองหล่อ'
+            ];
 
         // สร้าง chips สำหรับทำเลยอดนิยม
         const chipsItem = {
@@ -1360,11 +1299,11 @@
         let messageText = 'คุณสนใจทำเลไหนคะ? หรือพิมพ์ชื่อทำเลที่ต้องการได้เลย';
 
         const propertyType = chatState.propertySearch.building_type || 'อสังหาริมทรัพย์';
-        if (chatState.propertySearch.transaction_type === 'ซื้อ') {
+        if (chatState.propertySearch.post_type === 'ซื้อ') {
             messageText = `คุณสนใจซื้อ${propertyType}ในทำเลไหนคะ? เลือกจากตัวเลือกหรือพิมพ์ชื่อทำเลได้เลย`;
-        } else if (chatState.propertySearch.transaction_type === 'เช่า') {
+        } else if (chatState.propertySearch.post_type === 'เช่า') {
             messageText = `คุณสนใจเช่า${propertyType}ในทำเลไหนคะ? เลือกจากตัวเลือกหรือพิมพ์ชื่อทำเลได้เลย`;
-        } else if (chatState.propertySearch.transaction_type === 'ขาย') {
+        } else if (chatState.propertySearch.post_type === 'ขาย') {
             messageText = `${propertyType}ที่ต้องการขายอยู่ในทำเลไหนคะ? เลือกจากตัวเลือกหรือพิมพ์ชื่อทำเลได้เลย`;
         }
 
@@ -1385,7 +1324,7 @@
         `;
 
         // เพิ่มลงใน DOM
-        elements.chatMessages.appendChild(messageElement);
+//        elements.chatMessages.appendChild(messageElement);
 
         // เพิ่ม Event Listeners สำหรับ chips
         addInteractiveListeners(messageElement);
@@ -1441,7 +1380,7 @@
                 }
             }
 
-        if (chatState.propertySearch.transaction_type === 'เช่า') {
+        if (chatState.propertySearch.post_type === 'เช่า') {
             // ตัวเลือกสำหรับเช่า
             priceOptions = [
                 { text: 'ต่ำกว่า 5,000 บาท' },
@@ -1476,13 +1415,13 @@
         let messageText = 'คุณสนใจในช่วงราคาเท่าไหร่คะ? เลือกจากตัวเลือกหรือพิมพ์ราคาได้เลย';
 
         const propertyType = chatState.propertySearch.building_type || 'อสังหาริมทรัพย์';
-        const location = chatState.propertySearch.location ? `ในพื้นที่${chatState.propertySearch.location}` : '';
+        const location = chatState.propertySearch.keyword ? `ในพื้นที่${chatState.propertySearch.keyword}` : '';
 
-        if (chatState.propertySearch.transaction_type === 'ซื้อ') {
+        if (chatState.propertySearch.post_type === 'ซื้อ') {
             messageText = `คุณสนใจซื้อ${propertyType}${location}ในช่วงราคาเท่าไหร่คะ?`;
-        } else if (chatState.propertySearch.transaction_type === 'เช่า') {
+        } else if (chatState.propertySearch.post_type === 'เช่า') {
             messageText = `คุณสนใจเช่า${propertyType}${location}ในช่วงราคาเท่าไหร่คะ?`;
-        } else if (chatState.propertySearch.transaction_type === 'ขาย') {
+        } else if (chatState.propertySearch.post_type === 'ขาย') {
             messageText = `${propertyType}${location}ที่ต้องการขายอยู่ในช่วงราคาเท่าไหร่คะ?`;
         }
 
@@ -1502,7 +1441,7 @@
         `;
 
         // เพิ่มลงใน DOM
-        elements.chatMessages.appendChild(messageElement);
+//        elements.chatMessages.appendChild(messageElement);
 
         // เพิ่ม Event Listeners สำหรับ chips
         addInteractiveListeners(messageElement);
@@ -1519,12 +1458,12 @@
             // สร้างข้อความสรุปข้อมูลการค้นหา
             let summaryText = 'ดิฉันจะช่วยค้นหา';
 
-            if (chatState.propertySearch.transaction_type) {
-                if (chatState.propertySearch.transaction_type === 'ซื้อ') {
+            if (chatState.propertySearch.post_type) {
+                if (chatState.propertySearch.post_type === 'ซื้อ') {
                     summaryText += ' อสังหาริมทรัพย์สำหรับซื้อ';
-                } else if (chatState.propertySearch.transaction_type === 'เช่า') {
+                } else if (chatState.propertySearch.post_type === 'เช่า') {
                     summaryText += ' อสังหาริมทรัพย์สำหรับเช่า';
-                } else if (chatState.propertySearch.transaction_type === 'ขาย') {
+                } else if (chatState.propertySearch.post_type === 'ขาย') {
                     summaryText += ' อสังหาริมทรัพย์สำหรับขาย';
                 }
             }
@@ -1533,8 +1472,8 @@
                 summaryText += ` ประเภท${chatState.propertySearch.building_type}`;
             }
 
-            if (chatState.propertySearch.location) {
-                summaryText += ` บริเวณ${chatState.propertySearch.location}`;
+            if (chatState.propertySearch.keyword) {
+                summaryText += ` บริเวณ${chatState.propertySearch.keyword}`;
             }
 
             if (chatState.propertySearch.price) {
@@ -1582,7 +1521,7 @@
      `;
 
      // เพิ่มลงใน DOM
-     elements.chatMessages.appendChild(messageElement);
+//     elements.chatMessages.appendChild(messageElement);
 
      // เพิ่ม Event Listeners สำหรับ chips
      addInteractiveListeners(messageElement);
@@ -1622,11 +1561,13 @@
                 return msg;
             }
 
-            // ตรวจสอบจาก chips เกี่ยวกับทำเล
+            // ตรวจสอบจาก chips เกี่ยวกับทำเล (ใช้ข้อมูลจาก API)
             const chips = msg.querySelectorAll('.chip');
             for (const chip of chips) {
                 const chipText = chip.textContent.trim();
-                if (['กรุงเทพ', 'เชียงใหม่', 'ภูเก็ต', 'พัทยา', 'รัชดา', 'สุขุมวิท'].includes(chipText)) {
+                // ใช้ชื่อทำเลจาก API อย่างน้อย 6 รายการ
+                const popularNames = (chatState.popularLocations || []).slice(0, 6);
+                if (popularNames.includes(chipText)) {
                     return msg;
                 }
             }
@@ -1978,7 +1919,7 @@
     }
 
 
-    function processPropertySearchMessage(message) {
+    async function processPropertySearchMessage(message) {
         if (!message) return;
 
         // ป้องกันการเรียกฟังก์ชันซ้ำซ้อนในระยะเวลาใกล้เคียงกัน
@@ -2010,7 +1951,20 @@
                             resetPropertySearch();
 
                             return; // ออกจากฟังก์ชันเมื่อรีเซ็ต
-                        }
+                        }else if (lowerMessage.includes('ติดต่อเจ้าหน้าที่') ||
+                                     lowerMessage.includes('ติดต่อแอดมิน') ||
+                                     lowerMessage.includes('ติดต่อคน') ||
+                                     lowerMessage.includes('คุยกับคน') ||
+                                     lowerMessage.includes('ต้องการคุยกับแอดมิน') ||
+                                     lowerMessage.includes('ขอคุยกับเจ้าหน้าที่') ||
+                                     lowerMessage.includes('ขอติดต่อเจ้าหน้าที่') ||
+                                     lowerMessage.includes('ขอคุยกับคน') ||
+                                     lowerMessage.includes('อยากคุยกับคนจริงๆ')) {
+
+                                     // ติดต่อเจ้าหน้าที่
+                                     contactAdmin();
+                                     return; // ออกจากฟังก์ชันเพื่อไม่ทำขั้นตอนอื่นต่อ
+                                 }
 
                        if (analyzeFullSentence(message)) {
                            console.log('พบข้อมูลจากการวิเคราะห์ประโยคเต็ม');
@@ -2024,21 +1978,21 @@
                         case 1:
                             // Step 1: ประเภทธุรกรรม (เช่า/ซื้อ)
                             if (lowerMessage.includes('ซื้อ') || lowerMessage.includes('buy')) {
-                                chatState.propertySearch.transaction_type = 'ซื้อ';
+                                chatState.propertySearch.post_type = 'ซื้อ';
                                 console.log('Step 1: ตรวจพบความตั้งใจซื้อ');
                                 chatState.currentStep = 2; // เลื่อนไปยัง step ถัดไป
 
                                 // แสดงตัวเลือกประเภทอสังหาริมทรัพย์
                                 showPropertyTypeOptions();
                             } else if (lowerMessage.includes('เช่า') || lowerMessage.includes('rent')) {
-                                chatState.propertySearch.transaction_type = 'เช่า';
+                                chatState.propertySearch.post_type = 'เช่า';
                                 console.log('Step 1: ตรวจพบความตั้งใจเช่า');
                                 chatState.currentStep = 2; // เลื่อนไปยัง step ถัดไป
 
                                 // แสดงตัวเลือกประเภทอสังหาริมทรัพย์
                                 showPropertyTypeOptions();
                             } else if (lowerMessage.includes('ขาย') || lowerMessage.includes('sell') || lowerMessage.includes('sale')) {
-                                chatState.propertySearch.transaction_type = 'ขาย';
+                                chatState.propertySearch.post_type = 'ขาย';
                                 console.log('Step 1: ตรวจพบความตั้งใจขาย');
                                 chatState.currentStep = 2; // เลื่อนไปยัง step ถัดไป
 
@@ -2067,9 +2021,9 @@
                                 chatState.propertySearch.building_type = 'ทาวน์โฮม';
                                 console.log('Step 2: ตรวจพบประเภททาวน์โฮม');
                                 foundBuildingType = true;
-                            } else if (lowerMessage.includes('ที่ดิน') || lowerMessage.includes('land')) {
-                                chatState.propertySearch.building_type = 'ที่ดิน';
-                                console.log('Step 2: ตรวจพบประเภทที่ดิน');
+                            } else if (lowerMessage.includes('อาคารพาณิชย์') || lowerMessage.includes('land')) {
+                                chatState.propertySearch.building_type = 'อาคารพาณิชย์';
+                                console.log('Step 2: ตรวจพบประเภทอาคารพาณิชย์');
                                 foundBuildingType = true;
                             } else if (lowerMessage.includes('อพาร์ทเม้นท์') || lowerMessage.includes('อพาร์ทเม้น') || lowerMessage.includes('apartment')) {
                                 chatState.propertySearch.building_type = 'อพาร์ทเม้นท์';
@@ -2092,17 +2046,19 @@
                        case 3:
                            // Step 3: ทำเล/พื้นที่
                            // ตรวจสอบทำเลที่ตั้ง
-                           const locations = [
-                               'กรุงเทพ', 'เชียงใหม่', 'ขอนแก่น', 'พัทยา', 'ลาดพร้าว', 'สุขุมวิท', 'บางนา',
-                               'อโศก', 'รามคำแหง', 'รัชดา', 'เอกมัย', 'ทองหล่อ', 'พระราม9', 'รัตนาธิเบศร์',
-                               'เพชรเกษม', 'ภูเก็ต', 'ชลบุรี', 'พระราม2', 'สาทร', 'สีลม', 'ราชดำริ', 'นนทบุรี'
-                           ];
+                           const locations = chatState.locationList || [
+                                   'กรุงเทพ', 'เชียงใหม่', 'ขอนแก่น', 'พัทยา', 'ลาดพร้าว', 'สุขุมวิท', 'บางนา',
+                                   'อโศก', 'รามคำแหง', 'รัชดา', 'เอกมัย', 'ทองหล่อ', 'พระราม9', 'รัตนาธิเบศร์',
+                                   'เพชรเกษม', 'ภูเก็ต', 'ชลบุรี', 'พระราม2', 'สาทร', 'สีลม', 'ราชดำริ', 'นนทบุรี'
+                               ];
 
                            let locationFound = false;
 
                            for (const loc of locations) {
                                if (lowerMessage.includes(loc.toLowerCase())) {
-                                   chatState.propertySearch.location = loc;
+                                   chatState.propertySearch.keyword = loc;
+                                   zoneId = await getZoneIdFromAPI(chatState.propertySearch.keyword);
+                                   chatState.propertySearch.zone_id = zoneId;
                                    console.log('Step 3: ตรวจพบทำเล:', loc);
                                    locationFound = true;
                                    break;
@@ -2160,9 +2116,9 @@
 
                             // ถ้ามีคำสั่งค้นหา หรือมีการระบุราคาใหม่ ให้ดำเนินการค้นหา
                             if (searchCommand || priceMatch) {
-                                const hasTransactionType = !!chatState.propertySearch.transaction_type;
+                                const hasTransactionType = !!chatState.propertySearch.post_type;
                                 const hasBuildingType = !!chatState.propertySearch.building_type;
-                                const hasLocation = !!chatState.propertySearch.location;
+                                const hasLocation = !!chatState.propertySearch.keyword;
 
                                 if (hasTransactionType && (hasBuildingType || hasLocation)) {
                                     // ถ้ายังไม่มีข้อมูลราคา ให้กำหนดค่าเริ่มต้น
@@ -2215,7 +2171,7 @@
     // รีเซ็ตข้อมูลการค้นหา
     function resetPropertySearch() {
         chatState.propertySearch = {
-            transaction_type: null,
+            post_type: null,
             building_type: null,
             location: null,
             price: null,
@@ -2233,24 +2189,96 @@
         saveChatToLocalStorage();
     }
 
+// ฟังก์ชันติดต่อเจ้าหน้าที่ (Call Center)
+async function contactAdmin() {
+    try {
+        console.log('ผู้ใช้ต้องการติดต่อเจ้าหน้าที่');
 
+        // แสดงข้อความกำลังดำเนินการ
+        addMessage('bot', 'กำลังติดต่อเจ้าหน้าที่ให้คุณ กรุณารอสักครู่...');
+
+        // เรียก API เพื่อแจ้งเจ้าหน้าที่
+        const response = await fetch(`${chatState.apiBaseUrl}/chat/callcenter`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${chatState.apiToken}`,
+            },
+        });
+
+        const data = await response.json();
+        console.log('ผลการติดต่อเจ้าหน้าที่:', data);
+
+        // ถ้าติดต่อสำเร็จ
+        if (data.status === "success" || data.result_code === 1) {
+            // แสดงข้อความแจ้งผู้ใช้
+            const successMessage = `ขอบคุณที่ติดต่อเรา เจ้าหน้าที่ของเราจะเข้ามาตอบคำถามของคุณในไม่ช้า
+
+ระหว่างรอการตอบกลับ คุณสามารถแจ้งรายละเอียดเพิ่มเติมหรือคำถามที่สงสัยไว้ล่วงหน้าได้ เพื่อให้เจ้าหน้าที่สามารถช่วยเหลือคุณได้อย่างรวดเร็วและตรงประเด็น`;
+
+            // แสดงข้อความตอบกลับพร้อมตัวเลือก
+            const followUpOptions = {
+                type: 'chips',
+                options: [
+                    { text: 'กลับไปค้นหาอสังหาริมทรัพย์' },
+                    { text: 'ดูรายการอสังหาริมทรัพย์ยอดนิยม' }
+                ]
+            };
+
+            // แสดงข้อความและตัวเลือก
+            addMessage('bot', successMessage, '', null, followUpOptions.options);
+
+            // เพิ่มข้อความระบบแจ้งเตือน
+            addSystemMessage('กำลังเชื่อมต่อกับเจ้าหน้าที่');
+
+            return true;
+        } else {
+            // กรณีติดต่อไม่สำเร็จ
+            const errorMessage = 'ขออภัย ระบบไม่สามารถติดต่อเจ้าหน้าที่ได้ในขณะนี้ คุณสามารถลองอีกครั้งในภายหลัง หรือติดต่อเราทางช่องทางอื่นได้ที่ support@myproperty.com หรือโทร 02-XXX-XXXX';
+            addMessage('bot', errorMessage);
+
+            // ตัวเลือกหลังแสดงข้อความผิดพลาด
+            const errorOptions = {
+                type: 'chips',
+                options: [
+                    { text: 'ลองอีกครั้ง' },
+                    { text: 'กลับไปค้นหาอสังหาริมทรัพย์' }
+                ]
+            };
+
+            // แสดงตัวเลือกหลังข้อความผิดพลาด
+            setTimeout(() => {
+                addMessage('bot', 'คุณต้องการทำอย่างไรต่อไป?', '', null, errorOptions.options);
+            }, 1000);
+
+            return false;
+        }
+    } catch (error) {
+        console.error('เกิดข้อผิดพลาดในการติดต่อเจ้าหน้าที่:', error);
+
+        // กรณีเกิด error
+        const fallbackMessage = 'ขออภัย เกิดข้อผิดพลาดในการติดต่อเจ้าหน้าที่ คุณสามารถลองอีกครั้งในภายหลัง หรือติดต่อเราผ่านช่องทางอื่น';
+        addMessage('bot', fallbackMessage);
+
+        return false;
+    }
+}
     // ค้นหาอสังหาริมทรัพย์
-    function searchProperties() {
+    async function searchProperties() {
         console.log('เริ่มค้นหาอสังหาริมทรัพย์...');
 
         // ถ้าข้อมูลไม่พร้อม ให้ยกเลิก
-        if (!chatState.propertySearch.transaction_type || (!chatState.propertySearch.building_type && !chatState.propertySearch.location)) {
+        if (!chatState.propertySearch.post_type || (!chatState.propertySearch.building_type && !chatState.propertySearch.keyword)) {
             console.log('ข้อมูลไม่พร้อมสำหรับการค้นหา');
             addMessage('bot', 'ขออภัยค่ะ ข้อมูลยังไม่เพียงพอสำหรับการค้นหา');
 
             // กลับไปถามข้อมูลที่ขาด
-            if (!chatState.propertySearch.transaction_type) {
+            if (!chatState.propertySearch.post_type) {
                 chatState.currentStep = 1;
                 showTransactionTypeOptions();
             } else if (!chatState.propertySearch.building_type) {
                 chatState.currentStep = 2;
                 showPropertyTypeOptions();
-            } else if (!chatState.propertySearch.location) {
+            } else if (!chatState.propertySearch.keyword) {
                 chatState.currentStep = 3;
                 showLocationOptions();
             }
@@ -2268,13 +2296,35 @@
         // แปลงข้อมูลสำหรับส่งไป API
         const searchData = {
             post_type: mapPropertyType(chatState.propertySearch.building_type),
-            property_tag: mapTransactionType(chatState.propertySearch.transaction_type),
-            zone: chatState.propertySearch.location,
+            property_tag: mapTransactionType(chatState.propertySearch.post_type),
+            zone: chatState.propertySearch.keyword,
             price: chatState.propertySearch.price
         };
+         const priceId = mapPriceToId(chatState.propertySearch.price, chatState.propertySearch.post_type);
+
+        // แปลงข้อมูลสำหรับส่งไป API
+        const buildingType = mapPropertyType(chatState.propertySearch.building_type);
+
+        let postType = '';
+        if (chatState.propertySearch.post_type) {
+                        if (chatState.propertySearch.post_type === 'ซื้อ') {
+                            postType = 1;
+                        } else if (chatState.propertySearch.post_type === 'เช่า') {
+                            postType = 2;
+                        } else if (chatState.propertySearch.post_type === 'ขาย') {
+                            postType = 3;
+                        }
+                    }
+
+
+        // ส่งคำขอค้นหาไปยัง API โดยใช้รหัส ID ของราคาแทนค่าราคาโดยตรง
+        const apiUrl = `${chatState.apiBaseUrl}/chat/prop_listing?web_id=001&room_id=${chatState.sessionId}&price=${priceId}&post_type=${postType}&zone_id=${chatState.propertySearch.zone_id}&building_type=${buildingType}`;
+
+        console.log('เรียก API:', apiUrl);
+        console.log('ข้อมูลที่ส่ง: ราคา ID =', priceId, 'ประเภท =', postType, 'โซน =', zoneId);
 
         // ส่งคำขอค้นหาไปยัง API
-        fetch(`${chatState.apiBaseUrl}/chat/prop_listing?web_id=001&room_id=${chatState.sessionId}&price=${chatState.propertySearch.price}&post_type=${mapPropertyType(chatState.propertySearch.building_type)}&zone_id=${encodeURIComponent(chatState.propertySearch.location || '')}`, {
+        fetch(apiUrl, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${chatState.apiToken}`,
@@ -2400,14 +2450,14 @@
 
         // สร้างข้อความสรุปการค้นหา
         let summaryText = 'ผลการค้นหาอสังหาริมทรัพย์';
-        if (chatState.propertySearch.transaction_type) {
-            summaryText += ` สำหรับ${chatState.propertySearch.transaction_type}`;
+        if (chatState.propertySearch.post_type) {
+            summaryText += ` สำหรับ${chatState.propertySearch.post_type}`;
         }
         if (chatState.propertySearch.building_type) {
             summaryText += ` ประเภท${chatState.propertySearch.building_type}`;
         }
-        if (chatState.propertySearch.location) {
-            summaryText += ` บริเวณ${chatState.propertySearch.location}`;
+        if (chatState.propertySearch.keyword) {
+            summaryText += ` บริเวณ${chatState.propertySearch.keyword}`;
         }
         if (chatState.propertySearch.price && chatState.propertySearch.price !== '1') {
             summaryText += ` ในช่วงราคา${chatState.propertySearch.price}`;
@@ -2542,10 +2592,10 @@
 
         if (type.includes('คอนโด') || type.includes('condo')) return 1;
         if (type.includes('บ้าน') || type.includes('บ้านเดี่ยว') || type.includes('house')) return 2;
-        if (type.includes('ทาวน์เฮ้าส์') || type.includes('ทาวน์โฮม') || type.includes('townhouse') || type.includes('townhome')) return 3;
-        if (type.includes('ที่ดิน') || type.includes('land')) return 4;
+        if (type.includes('ทาวน์เฮ้าส์') || type.includes('ทาวน์โฮม') || type.includes('townhouse') || type.includes('townhome')) return 6;
+        if (type.includes('อาคารพาณิชย์') || type.includes('land')) return 4;
         if (type.includes('อพาร์ทเม้นท์') || type.includes('อพาร์ทเม้น') || type.includes('apartment')) return 5;
-
+        if (type.includes('บ้านแฝด') || type.includes('บ้านแฝด') || type.includes('apartment')) return 13;
         return 1; // กรณีไม่พบประเภทที่ตรงกัน ใช้ค่าเริ่มต้น (คอนโด)
     }
 
@@ -2615,14 +2665,14 @@
     function checkForSearchReady() {
         // ตรวจสอบว่ามีข้อมูลที่จำเป็นสำหรับการค้นหาหรือไม่
         // จำเป็นต้องมีอย่างน้อย: ประเภทธุรกรรม และ (ประเภทอสังหา หรือ ทำเล)
-        const hasTransactionType = !!chatState.propertySearch.transaction_type;
+        const hasTransactionType = !!chatState.propertySearch.post_type;
         const hasBuildingType = !!chatState.propertySearch.building_type;
-        const hasLocation = !!chatState.propertySearch.location;
+        const hasLocation = !!chatState.propertySearch.keyword;
 
         console.log('ตรวจสอบความพร้อมการค้นหา:');
-        console.log('- ประเภทธุรกรรม:', chatState.propertySearch.transaction_type);
+        console.log('- ประเภทธุรกรรม:', chatState.propertySearch.post_type);
         console.log('- ประเภทอสังหา:', chatState.propertySearch.building_type);
-        console.log('- ทำเล:', chatState.propertySearch.location);
+        console.log('- ทำเล:', chatState.propertySearch.keyword);
         console.log('- ราคา:', chatState.propertySearch.price);
         console.log('- Step ปัจจุบัน:', chatState.currentStep);
 
@@ -2669,7 +2719,7 @@
     }
 
 
-    function analyzeFullSentence(message) {
+    async function analyzeFullSentence(message) {
         if (!message) return false;
 
         // Prevent duplicate processing
@@ -2694,22 +2744,22 @@
             if (lowerMessage.includes('ซื้อ') || lowerMessage.includes('buy')) {
                 detectedInfo.transactionType = 'ซื้อ';
                 console.log('ตรวจพบความตั้งใจซื้อ');
-                if (!chatState.propertySearch.transaction_type) {
-                    chatState.propertySearch.transaction_type = 'ซื้อ';
+                if (!chatState.propertySearch.post_type) {
+                    chatState.propertySearch.post_type = 'ซื้อ';
                     foundNewInfo = true;
                 }
             } else if (lowerMessage.includes('เช่า') || lowerMessage.includes('rent')) {
                 detectedInfo.transactionType = 'เช่า';
                 console.log('ตรวจพบความตั้งใจเช่า');
-                if (!chatState.propertySearch.transaction_type) {
-                    chatState.propertySearch.transaction_type = 'เช่า';
+                if (!chatState.propertySearch.post_type) {
+                    chatState.propertySearch.post_type = 'เช่า';
                     foundNewInfo = true;
                 }
             } else if (lowerMessage.includes('ขาย') || lowerMessage.includes('sell') || lowerMessage.includes('sale')) {
                 detectedInfo.transactionType = 'ขาย';
                 console.log('ตรวจพบความตั้งใจขาย');
-                if (!chatState.propertySearch.transaction_type) {
-                    chatState.propertySearch.transaction_type = 'ขาย';
+                if (!chatState.propertySearch.post_type) {
+                    chatState.propertySearch.post_type = 'ขาย';
                     foundNewInfo = true;
                 }
             }
@@ -2736,11 +2786,11 @@
                     chatState.propertySearch.building_type = 'ทาวน์โฮม';
                     foundNewInfo = true;
                 }
-            } else if (lowerMessage.includes('ที่ดิน') || lowerMessage.includes('land')) {
-                detectedInfo.buildingType = 'ที่ดิน';
-                console.log('ตรวจพบประเภทที่ดิน');
+            } else if (lowerMessage.includes('อาคารพาณิชย์') || lowerMessage.includes('land')) {
+                detectedInfo.buildingType = 'อาคารพาณิชย์';
+                console.log('ตรวจพบประเภทอาคารพาณิชย์');
                 if (!chatState.propertySearch.building_type) {
-                    chatState.propertySearch.building_type = 'ที่ดิน';
+                    chatState.propertySearch.building_type = 'อาคารพาณิชย์';
                     foundNewInfo = true;
                 }
             } else if (lowerMessage.includes('อพาร์ทเม้นท์') || lowerMessage.includes('อพาร์ทเม้น') || lowerMessage.includes('apartment')) {
@@ -2753,7 +2803,7 @@
             }
 
             // Step 3: Detect location
-            const locations = [
+            const locations = chatState.locationList || [
                 'กรุงเทพ', 'เชียงใหม่', 'ขอนแก่น', 'พัทยา', 'ลาดพร้าว', 'สุขุมวิท', 'บางนา',
                 'อโศก', 'รามคำแหง', 'รัชดา', 'เอกมัย', 'ทองหล่อ', 'พระราม9', 'รัตนาธิเบศร์',
                 'เพชรเกษม', 'ภูเก็ต', 'ชลบุรี', 'พระราม2', 'สาทร', 'สีลม', 'ราชดำริ', 'นนทบุรี'
@@ -2763,8 +2813,10 @@
                 if (lowerMessage.includes(loc.toLowerCase())) {
                     detectedInfo.location = loc;
                     console.log('ตรวจพบทำเล:', loc);
-                    if (!chatState.propertySearch.location) {
-                        chatState.propertySearch.location = loc;
+                    if (!chatState.propertySearch.keyword) {
+                        chatState.propertySearch.keyword = loc;
+                        zoneId = await getZoneIdFromAPI(chatState.propertySearch.keyword);
+                        chatState.propertySearch.zone_id = zoneId;
                         foundNewInfo = true;
                     }
                     break;
@@ -2784,7 +2836,7 @@
                 console.log('ข้อมูลที่ตรวจพบ:', detectedInfo);
 
                 // Update currentStep based on the most advanced information detected
-                if (detectedInfo.transactionType && !chatState.propertySearch.transaction_type) {
+                if (detectedInfo.transactionType && !chatState.propertySearch.post_type) {
                     chatState.currentStep = 1;
                 }
                 if (detectedInfo.buildingType && chatState.currentStep <= 2) {
@@ -2796,9 +2848,9 @@
                 if (detectedInfo.price && chatState.currentStep <= 4) {
                     chatState.currentStep = 5;
                     // If price is the last piece of information, mark as complete
-                    if (chatState.propertySearch.transaction_type &&
+                    if (chatState.propertySearch.post_type &&
                         chatState.propertySearch.building_type &&
-                        chatState.propertySearch.location) {
+                        chatState.propertySearch.keyword) {
                         chatState.propertySearch.isComplete = true;
                         chatState.propertySearch.searchReady = true;
                     }
@@ -2806,9 +2858,9 @@
 
                 // Count how many required pieces of information we've gathered
                 const infoCount = [
-                    chatState.propertySearch.transaction_type,
+                    chatState.propertySearch.post_type,
                     chatState.propertySearch.building_type,
-                    chatState.propertySearch.location,
+                    chatState.propertySearch.keyword,
                     chatState.propertySearch.price
                 ].filter(Boolean).length;
 
@@ -2819,11 +2871,11 @@
                 }
 
                 // Determine what information to ask for next
-                if (!chatState.propertySearch.transaction_type) {
+                if (!chatState.propertySearch.post_type) {
                     showTransactionTypeOptions();
                 } else if (!chatState.propertySearch.building_type) {
                     showPropertyTypeOptions();
-                } else if (!chatState.propertySearch.location) {
+                } else if (!chatState.propertySearch.keyword) {
                     showLocationOptions();
                 } else if (!chatState.propertySearch.price) {
                     showPriceOptions();
@@ -2926,8 +2978,372 @@
         return false;
     }
 
+    // ฟังก์ชันแปลงค่าราคาเป็นรหัส ID
+    function mapPriceToId(price, transactionType) {
+        // ตรวจสอบว่าเป็นประเภทการเช่าหรือการซื้อ
+        const isRent = transactionType === 'เช่า' || transactionType === 'rent';
+
+        // ถ้าไม่มีข้อมูลราคา หรือราคาเป็น 1 (หมายถึงไม่จำกัดราคา) ให้ส่งค่า 0 (ไม่ระบุ)
+        if (!price || price === '1' || price === 1) {
+            return 0;
+        }
+
+        // ถ้าราคามีช่วง (มีเครื่องหมาย -)
+        if (typeof price === 'string' && price.includes('-')) {
+            const [minPrice, maxPrice] = price.split('-').map(p => parseFloat(p.replace(/,/g, '')));
+            return findPriceRangeId(minPrice, maxPrice, isRent);
+        }
+
+        // ถ้าราคาเป็นตัวเลขหรือสตริงที่ระบุเพียงค่าเดียว
+        const numericPrice = parseFloat(price.toString().replace(/,/g, ''));
+
+        // หาช่วงราคาที่เหมาะสม
+        return findClosestPriceRangeId(numericPrice, isRent);
+    }
+
+    // ฟังก์ชันช่วยหารหัส ID จากช่วงราคาที่ระบุ
+    function findPriceRangeId(minPrice, maxPrice, isRent) {
+        if (isRent) {
+            // สำหรับราคาเช่า
+            return findRentPriceRangeId(minPrice, maxPrice);
+        } else {
+            // สำหรับราคาซื้อ
+            return findBuyPriceRangeId(minPrice, maxPrice);
+        }
+    }
+
+    // ฟังก์ชันช่วยหารหัส ID ที่ใกล้เคียงที่สุดสำหรับราคาที่ระบุเพียงค่าเดียว
+    function findClosestPriceRangeId(price, isRent) {
+        if (isRent) {
+            // สำหรับราคาเช่า
+            return findClosestRentPriceRangeId(price);
+        } else {
+            // สำหรับราคาซื้อ
+            return findClosestBuyPriceRangeId(price);
+        }
+    }
+
+    // ฟังก์ชันช่วยหารหัส ID สำหรับช่วงราคาเช่า
+    function findRentPriceRangeId(minPrice, maxPrice) {
+        const rentRanges = [
+            { id: 0, min: null, max: null, name: 'ไม่ระบุ' },
+            { id: 1, min: 0, max: 5000, name: 'น้อยกว่า 5,000' },
+            { id: 2, min: 5000, max: 10000, name: '5,000 - 10,000' },
+            { id: 3, min: 10000, max: 20000, name: '10,000 - 20,000' },
+            { id: 4, min: 20000, max: 30000, name: '20,000 - 30,000' },
+            { id: 5, min: 30000, max: 40000, name: '30,000 - 40,000' },
+            { id: 6, min: 40000, max: 50000, name: '40,000 - 50,000' },
+            { id: 7, min: 50000, max: 60000, name: '50,000 - 60,000' },
+            { id: 8, min: 60000, max: 70000, name: '60,000 - 70,000' },
+            { id: 9, min: 70000, max: 80000, name: '70,000 - 80,000' },
+            { id: 10, min: 80000, max: 90000, name: '80,000 - 90,000' },
+            { id: 11, min: 90000, max: 100000, name: '90,000 - 100,000' },
+            { id: 12, min: 100000, max: 150000, name: '100,000 - 150,000' },
+            { id: 13, min: 150000, max: 200000, name: '150,000 - 200,000' },
+            { id: 14, min: 200000, max: 250000, name: '200,000 - 250,000' },
+            { id: 15, min: 250000, max: 300000, name: '250,000 - 300,000' },
+            { id: 16, min: 300000, max: 350000, name: '300,000 - 350,000' },
+            { id: 17, min: 350000, max: 400000, name: '350,000 - 400,000' },
+            { id: 18, min: 400000, max: 450000, name: '400,000 - 450,000' },
+            { id: 19, min: 450000, max: 500000, name: '450,000 - 500,000' },
+            { id: 20, min: 0, max: 500000, name: 'น้อยกว่า 500,000' },
+            { id: 21, min: 500000, max: 1000000, name: '500,000 - 1,000,000' },
+            { id: 22, min: 1000000, max: Infinity, name: 'มากกว่า 1 ล้าน' }
+        ];
+
+        // ตรวจสอบช่วงราคาที่ตรงกับเงื่อนไข
+        for (const range of rentRanges) {
+            // ถ้ามีทั้ง min และ max กำหนดไว้ ให้ตรวจสอบว่าราคาที่ระบุอยู่ในช่วงหรือไม่
+            if (range.min !== null && range.max !== null) {
+                if (minPrice >= range.min && maxPrice <= range.max) {
+                    return range.id;
+                }
+            }
+        }
+
+        // ถ้าไม่พบช่วงที่ตรงกัน
+        return 0; // ไม่ระบุ
+    }
+
+    // ฟังก์ชันช่วยหารหัส ID สำหรับช่วงราคาซื้อ
+    function findBuyPriceRangeId(minPrice, maxPrice) {
+        const buyRanges = [
+            { id: 0, min: null, max: null, name: 'ไม่ระบุ' },
+            { id: 23, min: 0, max: 1000000, name: 'น้อยกว่า 1 ล้าน' },
+            { id: 24, min: 1000000, max: 1500000, name: '1 ล้าน - 1.5 ล้าน' },
+            { id: 25, min: 1500000, max: 2000000, name: '1.5 ล้าน - 2 ล้าน' },
+            { id: 26, min: 2000000, max: 2500000, name: '2 ล้าน - 2.5 ล้าน' },
+            { id: 27, min: 2500000, max: 3000000, name: '2.5 ล้าน - 3 ล้าน' },
+            { id: 28, min: 3000000, max: 3500000, name: '3 ล้าน - 3.5 ล้าน' },
+            { id: 29, min: 3500000, max: 4000000, name: '3.5 ล้าน - 4 ล้าน' },
+            { id: 30, min: 4000000, max: 4500000, name: '4 ล้าน - 4.5 ล้าน' },
+            { id: 31, min: 4500000, max: 5000000, name: '4.5 ล้าน - 5 ล้าน' },
+            { id: 32, min: 5000000, max: 5500000, name: '5 ล้าน - 5.5 ล้าน' },
+            { id: 33, min: 5500000, max: 6000000, name: '5.5 ล้าน - 6 ล้าน' },
+            { id: 34, min: 6000000, max: 6500000, name: '6 ล้าน - 6.5 ล้าน' },
+            { id: 35, min: 6500000, max: 7000000, name: '6.5 ล้าน - 7 ล้าน' },
+            { id: 36, min: 7000000, max: 7500000, name: '7 ล้าน - 7.5 ล้าน' },
+            { id: 37, min: 7500000, max: 8000000, name: '7.5 ล้าน - 8 ล้าน' },
+            { id: 38, min: 8000000, max: 8500000, name: '8 ล้าน - 8.5 ล้าน' },
+            { id: 39, min: 8500000, max: 9000000, name: '8.5 ล้าน - 9 ล้าน' },
+            { id: 40, min: 9000000, max: 9500000, name: '9 ล้าน - 9.5 ล้าน' },
+            { id: 41, min: 9500000, max: 10000000, name: '9.5 ล้าน - 10 ล้าน' },
+            { id: 42, min: 10000000, max: 11000000, name: '10 ล้าน - 11 ล้าน' },
+            { id: 43, min: 11000000, max: 12000000, name: '11 ล้าน - 12 ล้าน' },
+            { id: 44, min: 12000000, max: 13000000, name: '12 ล้าน - 13 ล้าน' },
+            { id: 45, min: 13000000, max: 14000000, name: '13 ล้าน - 14 ล้าน' },
+            { id: 46, min: 14000000, max: 15000000, name: '14 ล้าน - 15 ล้าน' },
+            { id: 47, min: 15000000, max: 16000000, name: '15 ล้าน - 16 ล้าน' },
+            { id: 48, min: 16000000, max: 17000000, name: '16 ล้าน - 17 ล้าน' },
+            { id: 49, min: 17000000, max: 18000000, name: '17 ล้าน - 18 ล้าน' },
+            { id: 50, min: 18000000, max: 19000000, name: '18 ล้าน - 19 ล้าน' },
+            { id: 51, min: 19000000, max: 20000000, name: '19 ล้าน - 20 ล้าน' },
+            { id: 52, min: 20000000, max: 25000000, name: '20 ล้าน - 25 ล้าน' },
+            { id: 53, min: 25000000, max: 30000000, name: '25 ล้าน - 30 ล้าน' },
+            { id: 54, min: 30000000, max: 35000000, name: '30 ล้าน - 35 ล้าน' },
+            { id: 55, min: 35000000, max: 40000000, name: '35 ล้าน - 40 ล้าน' },
+            { id: 56, min: 40000000, max: 45000000, name: '40 ล้าน - 45 ล้าน' },
+            { id: 57, min: 45000000, max: 50000000, name: '45 ล้าน - 50 ล้าน' },
+            { id: 58, min: 50000000, max: 60000000, name: '50 ล้าน - 60 ล้าน' },
+            { id: 59, min: 60000000, max: 70000000, name: '60 ล้าน - 70 ล้าน' },
+            { id: 60, min: 70000000, max: 80000000, name: '70 ล้าน - 80 ล้าน' },
+            { id: 61, min: 80000000, max: 90000000, name: '80 ล้าน - 90 ล้าน' },
+            { id: 62, min: 90000000, max: 100000000, name: '90 ล้าน - 100 ล้าน' },
+            { id: 63, min: 100000000, max: Infinity, name: 'มากกว่า 100 ล้าน' }
+        ];
+
+        // ตรวจสอบช่วงราคาที่ตรงกับเงื่อนไข
+        for (const range of buyRanges) {
+            // ถ้ามีทั้ง min และ max กำหนดไว้ ให้ตรวจสอบว่าราคาที่ระบุอยู่ในช่วงหรือไม่
+            if (range.min !== null && range.max !== null) {
+                if (minPrice >= range.min && maxPrice <= range.max) {
+                    return range.id;
+                }
+            }
+        }
+
+        // ถ้าไม่พบช่วงที่ตรงกัน
+        return 0; // ไม่ระบุ
+    }
+
+    // ฟังก์ชันช่วยหารหัส ID ที่ใกล้เคียงที่สุดสำหรับราคาเช่า
+    function findClosestRentPriceRangeId(price) {
+        const rentRanges = [
+            { id: 0, min: null, max: null, name: 'ไม่ระบุ' },
+            { id: 1, min: 0, max: 5000, name: 'น้อยกว่า 5,000' },
+            { id: 2, min: 5000, max: 10000, name: '5,000 - 10,000' },
+            { id: 3, min: 10000, max: 20000, name: '10,000 - 20,000' },
+            { id: 4, min: 20000, max: 30000, name: '20,000 - 30,000' },
+            { id: 5, min: 30000, max: 40000, name: '30,000 - 40,000' },
+            { id: 6, min: 40000, max: 50000, name: '40,000 - 50,000' },
+            { id: 7, min: 50000, max: 60000, name: '50,000 - 60,000' },
+            { id: 8, min: 60000, max: 70000, name: '60,000 - 70,000' },
+            { id: 9, min: 70000, max: 80000, name: '70,000 - 80,000' },
+            { id: 10, min: 80000, max: 90000, name: '80,000 - 90,000' },
+            { id: 11, min: 90000, max: 100000, name: '90,000 - 100,000' },
+            { id: 12, min: 100000, max: 150000, name: '100,000 - 150,000' },
+            { id: 13, min: 150000, max: 200000, name: '150,000 - 200,000' },
+            { id: 14, min: 200000, max: 250000, name: '200,000 - 250,000' },
+            { id: 15, min: 250000, max: 300000, name: '250,000 - 300,000' },
+            { id: 16, min: 300000, max: 350000, name: '300,000 - 350,000' },
+            { id: 17, min: 350000, max: 400000, name: '350,000 - 400,000' },
+            { id: 18, min: 400000, max: 450000, name: '400,000 - 450,000' },
+            { id: 19, min: 450000, max: 500000, name: '450,000 - 500,000' },
+            { id: 21, min: 500000, max: 1000000, name: '500,000 - 1,000,000' },
+            { id: 22, min: 1000000, max: Infinity, name: 'มากกว่า 1 ล้าน' }
+        ];
+
+        // ตรวจสอบว่าราคาอยู่ในช่วงใด
+        for (const range of rentRanges) {
+            if (range.min !== null && range.max !== null) {
+                if (price >= range.min && price < range.max) {
+                    return range.id;
+                }
+            }
+        }
+
+        // ถ้าราคาต่ำกว่า 5,000
+        if (price < 5000) {
+            return 1; // น้อยกว่า 5,000
+        }
+
+        // ถ้าราคามากกว่า 1 ล้าน
+        if (price >= 1000000) {
+            return 22; // มากกว่า 1 ล้าน
+        }
+
+        // ถ้าไม่พบช่วงที่ตรงกัน
+        return 0; // ไม่ระบุ
+    }
+
+    // ฟังก์ชันช่วยหารหัส ID ที่ใกล้เคียงที่สุดสำหรับราคาซื้อ
+    function findClosestBuyPriceRangeId(price) {
+        // ถ้าราคาต่ำกว่า 1 ล้าน
+        if (price < 1000000) {
+            return 23; // น้อยกว่า 1 ล้าน
+        }
+
+        // ถ้าราคามากกว่า 100 ล้าน
+        if (price >= 100000000) {
+            return 63; // มากกว่า 100 ล้าน
+        }
+
+        // ช่วงราคาซื้อ
+        const buyRanges = [
+            { id: 24, min: 1000000, max: 1500000 },
+            { id: 25, min: 1500000, max: 2000000 },
+            { id: 26, min: 2000000, max: 2500000 },
+            { id: 27, min: 2500000, max: 3000000 },
+            { id: 28, min: 3000000, max: 3500000 },
+            { id: 29, min: 3500000, max: 4000000 },
+            { id: 30, min: 4000000, max: 4500000 },
+            { id: 31, min: 4500000, max: 5000000 },
+            { id: 32, min: 5000000, max: 5500000 },
+            { id: 33, min: 5500000, max: 6000000 },
+            { id: 34, min: 6000000, max: 6500000 },
+            { id: 35, min: 6500000, max: 7000000 },
+            { id: 36, min: 7000000, max: 7500000 },
+            { id: 37, min: 7500000, max: 8000000 },
+            { id: 38, min: 8000000, max: 8500000 },
+            { id: 39, min: 8500000, max: 9000000 },
+            { id: 40, min: 9000000, max: 9500000 },
+            { id: 41, min: 9500000, max: 10000000 },
+            { id: 42, min: 10000000, max: 11000000 },
+            { id: 43, min: 11000000, max: 12000000 },
+            { id: 44, min: 12000000, max: 13000000 },
+            { id: 45, min: 13000000, max: 14000000 },
+            { id: 46, min: 14000000, max: 15000000 },
+            { id: 47, min: 15000000, max: 16000000 },
+            { id: 48, min: 16000000, max: 17000000 },
+            { id: 49, min: 17000000, max: 18000000 },
+            { id: 50, min: 18000000, max: 19000000 },
+            { id: 51, min: 19000000, max: 20000000 },
+            { id: 52, min: 20000000, max: 25000000 },
+            { id: 53, min: 25000000, max: 30000000 },
+            { id: 54, min: 30000000, max: 35000000 },
+            { id: 55, min: 35000000, max: 40000000 },
+            { id: 56, min: 40000000, max: 45000000 },
+            { id: 57, min: 45000000, max: 50000000 },
+            { id: 58, min: 50000000, max: 60000000 },
+            { id: 59, min: 60000000, max: 70000000 },
+            { id: 60, min: 70000000, max: 80000000 },
+            { id: 61, min: 80000000, max: 90000000 },
+            { id: 62, min: 90000000, max: 100000000 }
+        ];
+
+        // ตรวจสอบว่าราคาอยู่ในช่วงใด
+        for (const range of buyRanges) {
+            if (price >= range.min && price < range.max) {
+                return range.id;
+            }
+        }
+
+        // ถ้าไม่พบช่วงที่ตรงกัน
+        return 0; // ไม่ระบุ
+    }
+
+    async function getZoneIdFromAPI(keyword) {
+        if (!keyword) {
+            console.log('ไม่มีคำค้นหาสำหรับโซน');
+            return '';
+        }
+
+        try {
+            console.log(`กำลังค้นหา Zone ID สำหรับคำค้นหา: "${keyword}"`);
+
+            // เรียก API เพื่อดึงข้อมูลโซน
+            const response = await fetch(`${chatState.apiBaseUrl}/chat/zone_list?keyword=${encodeURIComponent(keyword)}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${chatState.apiToken}`
+                }
+            });
+
+            // แปลงข้อมูลที่ได้รับเป็น JSON
+            const data = await response.json();
+
+            console.log('ผลการค้นหาโซน:', data);
+
+            // ตรวจสอบว่าได้รับข้อมูลถูกต้องหรือไม่
+            if (data.result_code === 1 && data.data && data.data.length > 0) {
+                // เลือกเฉพาะข้อมูลโซนแรกจากรายการที่ได้รับ
+                const zoneId = data.data[0].zone_id;
+                console.log(`พบ Zone ID: ${zoneId} สำหรับคำค้นหา "${keyword}"`);
+                return zoneId;
+            } else {
+                console.log(`ไม่พบ Zone ID สำหรับคำค้นหา "${keyword}"`);
+                return '';
+            }
+        } catch (error) {
+            console.error('เกิดข้อผิดพลาดในการดึงข้อมูล Zone ID:', error);
+            return '';
+        }
+    }
+
+    // สร้างฟังก์ชันใหม่สำหรับดึงรายชื่อทำเลจาก API
+    async function getLocationListFromAPI() {
+        try {
+            console.log('กำลังดึงรายการทำเลจาก API');
+
+            // เรียก API เพื่อดึงข้อมูลโซน
+            const response = await fetch(`${chatState.apiBaseUrl}/chat/short_zone`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${chatState.apiToken}`
+                }
+            });
+
+            // แปลงข้อมูลที่ได้รับเป็น JSON
+            const data = await response.json();
+
+            console.log('ผลการดึงรายการทำเล:', data);
+
+            // ตรวจสอบว่าได้รับข้อมูลถูกต้องหรือไม่
+            if (data.result_code === 1 && data.data && data.data.length > 0) {
+                // บันทึกข้อมูลไว้ใน chatState เพื่อใช้ภายหลัง
+                chatState.locationList = data.data;
+
+                // สร้าง popularLocations จาก 10 รายการแรก หรือตามจำนวนที่มี
+                chatState.popularLocations = data.data.slice(0, 10);
+
+                console.log(`ดึงรายการทำเลสำเร็จ: ${data.data.length} รายการ`);
+                console.log(`ทำเลยอดนิยม: ${chatState.popularLocations.join(', ')}`);
+
+                return data.data;
+            } else {
+                console.log(`ไม่พบข้อมูลทำเลจาก API หรือข้อมูลไม่ถูกต้อง`);
+                // กรณีไม่มีข้อมูล ใช้ค่าเริ่มต้น
+                const defaultLocations = [
+                    'กรุงเทพ', 'เชียงใหม่', 'ขอนแก่น', 'พัทยา', 'ลาดพร้าว', 'สุขุมวิท', 'บางนา',
+                    'อโศก', 'รามคำแหง', 'รัชดา', 'เอกมัย', 'ทองหล่อ', 'พระราม9', 'รัตนาธิเบศร์',
+                    'เพชรเกษม', 'ภูเก็ต', 'ชลบุรี', 'พระราม2', 'สาทร', 'สีลม', 'ราชดำริ', 'นนทบุรี'
+                ];
+                chatState.locationList = defaultLocations;
+                chatState.popularLocations = [
+                    'กรุงเทพ', 'เชียงใหม่', 'ภูเก็ต', 'พัทยา', 'หัวหิน',
+                    'รัชดา', 'สุขุมวิท', 'ลาดพร้าว', 'อโศก', 'ทองหล่อ'
+                ];
+                return defaultLocations;
+            }
+        } catch (error) {
+            console.error('เกิดข้อผิดพลาดในการดึงรายการทำเล:', error);
+            // กรณีเกิดข้อผิดพลาด ใช้ค่าเริ่มต้น
+            const defaultLocations = [
+                'กรุงเทพ', 'เชียงใหม่', 'ขอนแก่น', 'พัทยา', 'ลาดพร้าว', 'สุขุมวิท', 'บางนา',
+                'อโศก', 'รามคำแหง', 'รัชดา', 'เอกมัย', 'ทองหล่อ', 'พระราม9', 'รัตนาธิเบศร์',
+                'เพชรเกษม', 'ภูเก็ต', 'ชลบุรี', 'พระราม2', 'สาทร', 'สีลม', 'ราชดำริ', 'นนทบุรี'
+            ];
+            chatState.locationList = defaultLocations;
+            chatState.popularLocations = [
+                'กรุงเทพ', 'เชียงใหม่', 'ภูเก็ต', 'พัทยา', 'หัวหิน',
+                'รัชดา', 'สุขุมวิท', 'ลาดพร้าว', 'อโศก', 'ทองหล่อ'
+            ];
+            return defaultLocations;
+        }
+    }
+
     // เริ่มการทำงานของสคริปต์
-    function init() {
+    async function init() {
         console.log('เริ่มต้นการทำงานของแชท - Session ID:', chatState.sessionId);
 
         // เช็คอิลิเมนต์อีกครั้ง (ป้องกันกรณีเรียกก่อนที่ DOM จะพร้อม)
@@ -2945,6 +3361,8 @@
         console.log('ตรวจสอบการเชื่อมต่อปุ่ม:');
         console.log('- chatToggleBtn:', elements.chatToggleBtn);
         console.log('- chatWindow:', elements.chatWindow);
+
+        await getLocationListFromAPI();
 
         // โหลดข้อมูลแชทจาก localStorage
         loadChatFromLocalStorage();
