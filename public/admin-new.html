@@ -700,6 +700,77 @@
             }
         }
     </style>
+    <style>
+        /* Sortable Table Header Styles */
+        .sortable {
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            transition: background-color 0.2s;
+        }
+
+        .sortable:hover {
+            background-color: #f5f5f5;
+        }
+
+        .sort-icon {
+            margin-left: 8px;
+            font-size: 12px;
+            color: #999;
+            opacity: 0.6;
+            transition: all 0.2s;
+        }
+
+        .sortable:hover .sort-icon {
+            opacity: 1;
+            color: #666;
+        }
+
+        .sortable.sort-asc .sort-icon::before {
+            content: "\f0de"; /* fa-sort-up */
+            color: #5e35b1;
+            opacity: 1;
+        }
+
+        .sortable.sort-desc .sort-icon::before {
+            content: "\f0dd"; /* fa-sort-down */
+            color: #5e35b1;
+            opacity: 1;
+        }
+
+        .sortable.sort-asc,
+        .sortable.sort-desc {
+            background-color: rgba(94, 53, 177, 0.1);
+        }
+
+        .sortable.sort-asc .sort-icon,
+        .sortable.sort-desc .sort-icon {
+            color: #5e35b1;
+            opacity: 1;
+        }
+
+        /* เพิ่มสีเมื่อ hover บนหัวข้อที่สามารถเรียงได้ */
+        .sortable::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background-color: #5e35b1;
+            transition: width 0.3s;
+        }
+
+        .sortable:hover::after {
+            width: 100%;
+        }
+
+        .sortable.sort-asc::after,
+        .sortable.sort-desc::after {
+            width: 100%;
+        }
+    </style>
+
 </head>
 <body>
 
@@ -745,11 +816,26 @@
             <table>
                 <thead>
                 <tr>
-                    <th>ชื่อ</th>
-                    <th>เวลาติดต่อ</th>
-                    <th>ข้อความล่าสุด</th>
-                    <th>ติดต่อ</th>
-                    <th>สถานะ</th>
+                    <th class="sortable" data-sort="name">
+                        ชื่อ
+                        <i class="fas fa-sort sort-icon"></i>
+                    </th>
+                    <th class="sortable" data-sort="lastActivity">
+                        เวลาติดต่อ
+                        <i class="fas fa-sort sort-icon"></i>
+                    </th>
+                    <th class="sortable" data-sort="lastMessage">
+                        ข้อความล่าสุด
+                        <i class="fas fa-sort sort-icon"></i>
+                    </th>
+                    <th class="sortable" data-sort="contact">
+                        ติดต่อ
+                        <i class="fas fa-sort sort-icon"></i>
+                    </th>
+                    <th class="sortable" data-sort="status">
+                        สถานะ
+                        <i class="fas fa-sort sort-icon"></i>
+                    </th>
                     <th>การดำเนินการ</th>
                 </tr>
                 </thead>
@@ -782,12 +868,6 @@
         </div>
 
         <div class="chat-messages" id="adminChatMessages">
-            <!-- ข้อความตัวอย่าง -->
-            <div class="message bot">
-                <div class="message-content">
-                    👋 สวัสดีค่ะ ฉันคือผู้ช่วยอัจฉริยะของ My Property พร้อมช่วยคุณค้นหา ซื้อ ขาย หรือเช่าอสังหาฯ แบบง่าย ๆ สนใจเรื่องไหน ถามกับฉันได้เลย!
-                </div>
-            </div>
 
             <div class="message user">
                 <div class="message-content">
@@ -801,6 +881,8 @@
             <button class="send-btn" id="admin-send-btn"><i class="fas fa-paper-plane"></i></button>
         </div>
 </div>
+
+
 
 <!-- JavaScript -->
 <script src="/socket.io/socket.io.js"></script>
@@ -856,95 +938,94 @@
     };
 
     // เชื่อมต่อ Socket.IO
-    function connectSocket() {
-        try {
-            const socketUrl = window.location.origin;
+   function connectSocket() {
+    try {
+        const socketUrl = window.location.origin;
+        adminState.socket = io(socketUrl);
 
-            adminState.socket = io(socketUrl);
+        adminState.socket.on('connect', () => {
+            console.log('เชื่อมต่อกับ Socket.IO สำเร็จ:', adminState.socket.id);
 
+            if (elements.socketStatus) {
+                elements.socketStatus.textContent = 'เชื่อมต่อแล้ว';
+                elements.socketStatus.classList.add('connected');
+                elements.socketStatus.classList.remove('disconnected');
+            }
 
-            adminState.socket.on('connect', () => {
-                console.log('เชื่อมต่อกับ Socket.IO สำเร็จ:', adminState.socket.id);
+            // ร้องขอเข้าร่วมทุกห้องทันที (เฉพาะแอดมิน)
+            adminState.socket.emit('join_all_rooms');
+            console.log('ส่งคำขอเข้าร่วมทุกห้อง');
+        });
 
-                if (elements.socketStatus) {
-                    elements.socketStatus.textContent = 'เชื่อมต่อแล้ว';
-                    elements.socketStatus.classList.add('connected');
-                    elements.socketStatus.classList.remove('disconnected');
+        // *** เพิ่มการจัดการ disconnect ***
+        adminState.socket.on('disconnect', () => {
+            console.log('ตัดการเชื่อมต่อจาก Socket.IO');
+
+            // ถ้ามีการเปิดแชทและ admin active อยู่ ให้รีเซ็ต
+            if (adminState.currentSessionId && adminState.adminActive) {
+                adminState.adminActive = false;
+                updateAdminStatusBtn();
+                console.log('Socket disconnect - รีเซ็ต admin status');
+            }
+
+            if (elements.socketStatus) {
+                elements.socketStatus.textContent = 'ขาดการเชื่อมต่อ';
+                elements.socketStatus.classList.add('disconnected');
+                elements.socketStatus.classList.remove('connected');
+            }
+        });
+
+        // รับข้อความใหม่
+        adminState.socket.on('new_message', (data) => {
+            console.log('ได้รับข้อความใหม่:', data);
+
+            // ตรวจสอบว่าข้อมูลมีครบหรือไม่
+            if (!data.room || !data.sender) {
+                console.error('ข้อมูลข้อความไม่ครบถ้วน:', data);
+                return;
+            }
+
+            // อัปเดตการสนทนาในรายการ
+            updateConversationInList(data);
+
+            // ถ้าเป็นห้องที่กำลังดูอยู่ ให้แสดงข้อความ
+            if (data.room === adminState.currentSessionId) {
+                addMessageToChat(data);
+            } else {
+                // ถ้าเป็นห้องอื่น แสดงการแจ้งเตือน
+                if (data.sender === 'user') {
+                    showNotification(`มีข้อความใหม่จากผู้ใช้ในห้อง ${data.room}`);
                 }
+            }
+        });
 
-                // ร้องขอเข้าร่วมทุกห้องทันที (เฉพาะแอดมิน)
-                adminState.socket.emit('join_all_rooms');
+        adminState.socket.on('joined_all_rooms', (data) => {
+            console.log('เข้าร่วมห้องทั้งหมดแล้ว:', data);
+        });
 
-                // บันทึก log เพื่อตรวจสอบ
-                console.log('ส่งคำขอเข้าร่วมทุกห้อง');
-            });
+        // รับการแจ้งเตือนเมื่อมีผู้ใช้ต้องการติดต่อแอดมิน
+        adminState.socket.on('user_request_agent', (data) => {
+            console.log('ผู้ใช้ต้องการติดต่อแอดมิน:', data);
+            showNotification(`ผู้ใช้ ${data.userInfo?.name || 'ไม่ระบุชื่อ'} ต้องการติดต่อแอดมิน`);
+            loadConversations();
+        });
 
-            // รับข้อความใหม่
-            adminState.socket.on('new_message', (data) => {
-                console.log('ได้รับข้อความใหม่:', data);
+        // รับการแจ้งเตือนการเปลี่ยนสถานะแอดมิน
+        adminState.socket.on('admin_status_change', (data) => {
+            console.log('การเปลี่ยนสถานะแอดมิน:', data);
 
-                // ตรวจสอบว่าข้อมูลมีครบหรือไม่
-                if (!data.room || !data.sender) {
-                    console.error('ข้อมูลข้อความไม่ครบถ้วน:', data);
-                    return;
-                }
+            if (data.room === adminState.currentSessionId) {
+                adminState.adminActive = data.adminActive;
+                updateAdminStatusBtn();
+            }
+        });
 
-                // อัปเดตการสนทนาในรายการ
-                updateConversationInList(data);
-
-                // ถ้าเป็นห้องที่กำลังดูอยู่ ให้แสดงข้อความ
-                if (data.room === adminState.currentSessionId) {
-                    addMessageToChat(data);
-                } else {
-                    // ถ้าเป็นห้องอื่น แสดงการแจ้งเตือน
-                    if (data.sender === 'user') {
-                        showNotification(`มีข้อความใหม่จากผู้ใช้ในห้อง ${data.room}`);
-                    }
-                }
-            });
-
-
-            adminState.socket.on('joined_all_rooms', (data) => {
-                console.log('เข้าร่วมห้องทั้งหมดแล้ว:', data);
-            });
-
-            // รับการแจ้งเตือนเมื่อมีผู้ใช้ต้องการติดต่อแอดมิน
-            adminState.socket.on('user_request_agent', (data) => {
-                console.log('ผู้ใช้ต้องการติดต่อแอดมิน:', data);
-
-                showNotification(`ผู้ใช้ ${data.userInfo?.name || 'ไม่ระบุชื่อ'} ต้องการติดต่อแอดมิน`);
-
-                // อัปเดตรายการการสนทนา
-                loadConversations();
-            });
-
-            // รับการแจ้งเตือนการเปลี่ยนสถานะแอดมิน
-            adminState.socket.on('admin_status_change', (data) => {
-                console.log('การเปลี่ยนสถานะแอดมิน:', data);
-
-                if (data.room === adminState.currentSessionId) {
-                    adminState.adminActive = data.adminActive;
-                    updateAdminStatusBtn();
-                }
-            });
-
-            // เมื่อตัดการเชื่อมต่อ
-            adminState.socket.on('disconnect', () => {
-                console.log('ตัดการเชื่อมต่อจาก Socket.IO');
-
-                if (elements.socketStatus) {
-                    elements.socketStatus.textContent = 'ขาดการเชื่อมต่อ';
-                    elements.socketStatus.classList.add('disconnected');
-                    elements.socketStatus.classList.remove('connected');
-                }
-            });
-
-            return true;
-        } catch (error) {
-            console.error('เกิดข้อผิดพลาดในการเชื่อมต่อ Socket.IO:', error);
-            return false;
-        }
+        return true;
+    } catch (error) {
+        console.error('เกิดข้อผิดพลาดในการเชื่อมต่อ Socket.IO:', error);
+        return false;
     }
+}
 
   // ปรับปรุงฟังก์ชัน loadConversations ให้เป็นแบบ Promise
 function loadConversations() {
@@ -1324,6 +1405,26 @@ function openChatSession(sessionId) {
   adminState.currentSessionId = sessionId;
   adminState.currentRoomId = conversation ? (conversation.roomId || sessionId) : sessionId;
 
+  // *** เพิ่มส่วนนี้: เปิด Admin Active อัตโนมัติ ***
+  adminState.adminActive = true;
+  updateAdminStatusBtn();
+
+  // ส่งสถานะแอดมินผ่าน Socket.IO
+  if (adminState.socket) {
+    adminState.socket.emit('admin_status_change', {
+      type: 'admin_status_change',
+      adminActive: true,
+      timestamp: Date.now(),
+      room: adminState.currentSessionId,
+      adminId: adminState.adminInfo.id,
+      adminName: adminState.adminInfo.name
+    });
+  }
+
+  // แสดงการแจ้งเตือน
+  showNotification('แอดมินกำลังให้บริการในห้องแชทนี้');
+  // *** สิ้นสุดส่วนที่เพิ่ม ***
+
   // แสดงหน้าต่างแชท
   elements.chatPanel.style.display = 'flex';
   elements.adminChatMessages.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">กำลังโหลดข้อความ...</div>';
@@ -1358,29 +1459,25 @@ function openChatSession(sessionId) {
       elements.chatCustomerName.textContent = name;
       elements.chatCustomerContact.textContent = contact;
 
-      // อัปเดตสถานะแอดมิน
-      adminState.adminActive = data.status_reply === 1;
+      // *** เปลี่ยนบรรทัดนี้: กำหนดให้ admin active เสมอ ***
+      adminState.adminActive = true; // เดิมคือ: data.status_reply === 1
       updateAdminStatusBtn();
 
       // แสดงประวัติการสนทนา
       if (data.messages && data.messages.length > 0) {
         // ตรวจสอบข้อมูลทุกข้อความที่ได้รับจาก API
         data.messages.forEach(msg => {
-          // เพิ่ม debug logging เพื่อตรวจสอบข้อมูลแต่ละข้อความ
           console.log(`ข้อความ ID: ${msg.create_date} Type: ${msg.type} Sender: ${msg.sender}`);
 
-          // ตรวจสอบว่ามี options หรือไม่
           if (msg.options) {
             console.log(`มี options: ${JSON.stringify(msg.options)}`);
           }
 
-          // ตรวจสอบเพิ่มเติมสำหรับข้อความประเภท 2
           if (msg.type === 2) {
             console.log(`ข้อความประเภท 2 (options): ${JSON.stringify(msg)}`);
           }
         });
 
-        // เรียกใช้ displayChatHistory แบบที่ปรับปรุงแล้ว
         displayChatHistory(data.messages);
       } else {
         elements.adminChatMessages.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">ยังไม่มีข้อความในการสนทนานี้</div>';
@@ -1412,120 +1509,76 @@ function displayChatHistory(messages) {
     // ล้างเนื้อหาก่อนแสดงข้อความใหม่
     elements.adminChatMessages.innerHTML = '';
 
-    // เรียงข้อความจากเก่าไปใหม่
+    // สำคัญ: เรียงข้อความจากเก่าไปใหม่ก่อนแสดงผล
+    // เนื่องจาก messages จาก API เรียงจากใหม่ไปเก่า
     const sortedMessages = [...messages].sort((a, b) => {
         return a.create_date - b.create_date;
     });
 
     // แสดงข้อความตามลำดับที่เรียงใหม่
     sortedMessages.forEach(msg => {
-        console.log(`กำลังแสดงข้อความ: type=${msg.type}, sender=${msg.sender}, ` +
-                   `มี options=${Boolean(msg.options)}, text="${msg.message || ''}"`);
+        // แปลงข้อมูลให้ตรงกับรูปแบบที่ใช้ในฟังก์ชัน addMessageToChat
+        const messageData = {
+            sender: msg.sender,
+            text: msg.message || '', // รองรับทั้ง message และ text
+            timestamp: msg.create_date,
+            adminName: msg.adminName || (msg.sender === 'admin' ? adminState.adminInfo.name : undefined),
+            room: adminState.currentSessionId
+        };
 
-        // ข้อความประเภท 2 (มี options) ให้แสดงเป็น chips
-        if (msg.type === 2 && msg.options) {
-            const messageElement = document.createElement('div');
-            messageElement.className = 'message bot-message';
-            messageElement.setAttribute('data-message-id', msg.create_date);
-
-            // สร้าง HTML สำหรับ chips
-            let chipsHTML = '';
-            try {
-                // ตรวจสอบว่า options เป็น array หรือไม่
-                const options = Array.isArray(msg.options) ? msg.options :
-                              (typeof msg.options === 'string' ? JSON.parse(msg.options) : []);
-
-                if (options.length > 0) {
-                    chipsHTML = `
-                        <div class="rich-chips">
-                            ${options.map(option => {
-                                const text = typeof option === 'object' ? option.text : option;
-                                return `<span class="rich-chip">${escapeHTML(text)}</span>`;
-                            }).join('')}
-                        </div>
-                    `;
-                }
-            } catch (e) {
-                console.error('Error parsing options:', e);
-            }
-
-            // สร้าง HTML สำหรับข้อความและ chips
-            messageElement.innerHTML = `
-                <div class="message-avatar">
-                    <img src="assets/icons/chat-avatar.jpg" alt="Bot">
-                </div>
-                <div class="message-content">
-                    <p>${escapeHTML(msg.message || '')}</p>
-                    ${chipsHTML}
-                    <small>ส่งโดย : บอท</small>
-                </div>
-            `;
-
-            // เพิ่มข้อความลงในพื้นที่แชท
-            elements.adminChatMessages.appendChild(messageElement);
-
-            // เพิ่ม event listeners สำหรับ chips
-            const chips = messageElement.querySelectorAll('.rich-chip');
-            chips.forEach(chip => {
-                chip.addEventListener('click', function() {
-                    const text = this.textContent;
-                    console.log('Chip clicked:', text);
-
-                    // ส่งข้อความเมื่อคลิก chip
-                    const messageId = Date.now();
-                    addMessageToChat({
-                        sender: 'admin',
-                        text: text,
-                        adminName: adminState.adminInfo.name,
-                        timestamp: messageId,
-                        room: adminState.currentSessionId
-                    });
-
-                    // ส่งข้อความผ่าน API และ Socket
-                    sendAdminMessage(text);
-                });
-            });
-        }
-        // ข้อความประเภทอื่นๆ
-        else {
-            const messageData = {
-                sender: msg.sender || 'bot',
-                text: msg.message || '',
-                timestamp: msg.create_date,
-                adminName: msg.adminName || (msg.sender === 'admin' ? adminState.adminInfo.name : undefined),
-                room: adminState.currentSessionId
+        // ตรวจสอบข้อมูลเพิ่มเติม (เช่น item_list สำหรับแสดงรายการอสังหาริมทรัพย์)
+        if (msg.type === 3 && msg.item_list && Array.isArray(msg.item_list)) {
+            messageData.payload = {
+                richContent: [
+                    [
+                        {
+                            type: "info",
+                            title: msg.message || "รายการอสังหาริมทรัพย์",
+                            subtitle: `พบทั้งหมด ${msg.item_list.length} รายการ`
+                        },
+                        ...msg.item_list.map(item => ({
+                            type: "custom_card",
+                            property_data: {
+                                id: item.web_id,
+                                imageUrl: item.photo || '',
+                                title: item.name || 'ไม่ระบุชื่อ',
+                                location: item.zone_name || 'ไม่ระบุที่ตั้ง',
+                                price: item.price || '-',
+                                tag: item.tag || 'ขาย',
+                                link: item.link || '#'
+                            }
+                        }))
+                    ]
+                ]
             };
 
-            // เพิ่มข้อมูล payload ถ้ามี
-            if (msg.type === 3 && msg.item_list) {
-                messageData.payload = {
-                    richContent: [
-                        [
-                            {
-                                type: "info",
-                                title: msg.message || "รายการอสังหาริมทรัพย์",
-                                subtitle: `พบทั้งหมด ${msg.item_list.length} รายการ`
-                            },
-                            ...msg.item_list.map(item => ({
-                                type: "custom_card",
-                                property_data: {
-                                    id: item.web_id,
-                                    imageUrl: item.photo || '',
-                                    title: item.name || 'ไม่ระบุชื่อ',
-                                    location: item.zone_name || 'ไม่ระบุที่ตั้ง',
-                                    price: item.price || '-',
-                                    tag: item.tag || 'ขาย',
-                                    link: item.link || '#'
-                                }
-                            }))
-                        ]
+            // เพิ่มปุ่ม "ดูเพิ่มเติม" ถ้ามี
+            if (msg.more && msg.more.link) {
+                messageData.payload.richContent[0].push({
+                    type: "button",
+                    options: [
+                        {
+                            text: msg.more.txt || "ดูเพิ่มเติม",
+                            link: msg.more.link
+                        }
                     ]
-                };
+                });
             }
-
-            // ใช้ addMessageToChat สำหรับข้อความทั่วไป
-            addMessageToChat(messageData);
+        } else if (msg.type === 2 && msg.options && Array.isArray(msg.options)) {
+            // แสดงตัวเลือกเป็น chips
+            messageData.payload = {
+                richContent: [
+                    [
+                        {
+                            type: "chips",
+                            options: msg.options.map(option => ({ text: option }))
+                        }
+                    ]
+                ]
+            };
         }
+
+        addMessageToChat(messageData);
     });
 
     // เลื่อนไปที่ข้อความล่าสุด
@@ -1684,6 +1737,29 @@ function scrollToBottom() {
 
 // ปิดหน้าต่างแชท
 function closeChatPanel() {
+    // *** เพิ่มส่วนนี้: ปิด Admin Active เมื่อปิดแชท ***
+    if (adminState.currentSessionId && adminState.adminActive) {
+        // ตั้งค่า admin เป็น inactive
+        adminState.adminActive = false;
+        updateAdminStatusBtn();
+
+        // ส่งสถานะแอดมินผ่าน Socket.IO
+        if (adminState.socket) {
+            adminState.socket.emit('admin_status_change', {
+                type: 'admin_status_change',
+                adminActive: false,
+                timestamp: Date.now(),
+                room: adminState.currentSessionId,
+                adminId: adminState.adminInfo.id,
+                adminName: adminState.adminInfo.name
+            });
+        }
+
+        // แสดงการแจ้งเตือน
+        showNotification('แอดมินออกจากการให้บริการแล้ว');
+    }
+    // *** สิ้นสุดส่วนที่เพิ่ม ***
+
     // ออกจากห้องแชท
     if (adminState.currentSessionId && adminState.socket) {
         adminState.socket.emit('leave', adminState.currentSessionId);
@@ -1693,6 +1769,61 @@ function closeChatPanel() {
     adminState.currentSessionId = null;
     elements.chatPanel.style.display = 'none';
 }
+let isUnloading = false;
+
+function handlePageUnload() {
+    // ป้องกันการเรียกซ้ำ
+    if (isUnloading) {
+        console.log('กำลังประมวลผล unload อยู่แล้ว ข้ามการทำงานซ้ำ');
+        return;
+    }
+
+    isUnloading = true;
+
+    // ถ้ามีการเปิดแชทและแอดมินกำลัง active อยู่
+    if (adminState.currentSessionId && adminState.adminActive && adminState.socket) {
+        console.log('Admin ออกจากระบบ - ปิด active status');
+
+        // ส่งสัญญาณ admin inactive ก่อนปิดหน้า
+        adminState.socket.emit('admin_status_change', {
+            type: 'admin_status_change',
+            adminActive: false,
+            timestamp: Date.now(),
+            room: adminState.currentSessionId,
+            adminId: adminState.adminInfo.id,
+            adminName: adminState.adminInfo.name
+        });
+
+        // ออกจากห้องแชท
+        adminState.socket.emit('leave', adminState.currentSessionId);
+    }
+
+    // รีเซ็ตตัวแปรหลังจาก 1 วินาที (กรณีที่ไม่ได้ปิดหน้าจริงๆ)
+    setTimeout(() => {
+        isUnloading = false;
+    }, 1000);
+}
+
+
+function handlePageLoad() {
+    // รีเซ็ตตัวแปร unloading
+    isUnloading = false;
+
+    // เมื่อโหลดหน้าใหม่ ให้รีเซ็ต admin status
+    adminState.adminActive = false;
+    adminState.currentSessionId = null;
+
+    // ซ่อนหน้าต่างแชท
+    if (elements.chatPanel) {
+        elements.chatPanel.style.display = 'none';
+    }
+
+    // อัปเดตปุ่มสถานะ
+    updateAdminStatusBtn();
+
+    console.log('หน้าเว็บโหลดใหม่ - รีเซ็ต admin status');
+}
+
 
 // ส่งข้อความจากแอดมิน// ส่งข้อความจากแอดมิน
 function sendAdminMessage() {
@@ -1925,6 +2056,16 @@ function escapeHTML(text) {
 
 // เริ่มต้นการทำงาน
 function init() {
+    // *** ใช้เพียง beforeunload เท่านั้น เพื่อป้องกันการยิงซ้ำ ***
+    window.addEventListener('beforeunload', handlePageUnload);
+
+    // *** ลบ Event Listeners อื่นที่ซ้ำซ้อน ***
+    // window.addEventListener('unload', handlePageUnload);        // ลบบรรทัดนี้
+    // window.addEventListener('pagehide', handlePageUnload);      // ลบบรรทัดนี้
+
+    // *** เพิ่ม Event Listener สำหรับการโหลดหน้าใหม่ ***
+    window.addEventListener('load', handlePageLoad);
+
     // เชื่อมต่อ Socket.IO
     connectSocket();
 
@@ -2013,5 +2154,247 @@ function init() {
 // เริ่มทำงานเมื่อโหลดหน้าเสร็จ
 document.addEventListener('DOMContentLoaded', init);
 </script>
+    <script>
+        // เพิ่มสถานะการเรียงลำดับ
+        const sortState = {
+            column: 'lastActivity', // คอลัมน์เริ่มต้น
+            direction: 'desc' // ทิศทางเริ่มต้น (ใหม่ไปเก่า)
+        };
+
+        // ฟังก์ชันเริ่มต้นระบบการเรียงลำดับ
+        function initializeSorting() {
+            // เพิ่ม event listeners ให้กับหัวตารางที่สามารถเรียงได้
+            document.querySelectorAll('.sortable').forEach(header => {
+                header.addEventListener('click', function() {
+                    const sortBy = this.dataset.sort;
+                    handleColumnSort(sortBy);
+                });
+            });
+
+            // ตั้งค่าเริ่มต้นให้กับคอลัมน์แรก
+            updateSortIndicators();
+        }
+
+        // ฟังก์ชันจัดการการคลิกหัวตาราง
+        function handleColumnSort(columnName) {
+            // ถ้าคลิกคอลัมน์เดิม ให้สลับทิศทาง
+            if (sortState.column === columnName) {
+                sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                // ถ้าคลิกคอลัมน์ใหม่ ให้เรียงจากน้อยไปมาก
+                sortState.column = columnName;
+                sortState.direction = 'asc';
+
+                // ยกเว้นคอลัมน์เวลาให้เรียงจากใหม่ไปเก่าเป็นค่าเริ่มต้น
+                if (columnName === 'lastActivity') {
+                    sortState.direction = 'desc';
+                }
+            }
+
+            // อัปเดตสัญลักษณ์การเรียงลำดับ
+            updateSortIndicators();
+
+            // รีเซ็ตการแบ่งหน้าและแสดงผลใหม่
+            adminState.pagination.currentPage = 1;
+            renderConversationList();
+
+            console.log(`เรียงตาม: ${columnName} (${sortState.direction})`);
+        }
+
+        // ฟังก์ชันอัปเดตสัญลักษณ์การเรียงลำดับ
+        function updateSortIndicators() {
+            // ลบ class การเรียงลำดับออกจากทุกหัวข้อ
+            document.querySelectorAll('.sortable').forEach(header => {
+                header.classList.remove('sort-asc', 'sort-desc');
+            });
+
+            // เพิ่ม class การเรียงลำดับให้กับหัวข้อที่ถูกเลือก
+            const activeHeader = document.querySelector(`[data-sort="${sortState.column}"]`);
+            if (activeHeader) {
+                activeHeader.classList.add(`sort-${sortState.direction}`);
+            }
+        }
+
+        // แก้ไขฟังก์ชัน renderConversationList เพื่อใช้การเรียงลำดับจากหัวตาราง
+        function renderConversationListWithTableSort() {
+            // ดึงสถานะแท็บที่กำลังเลือกอยู่
+            const activeTab = document.querySelector('.tab.active');
+            const currentStatus = activeTab ? activeTab.dataset.status : 'all';
+
+            // ดึงข้อความค้นหา
+            const searchText = elements.searchInput ? elements.searchInput.value.trim().toLowerCase() : '';
+
+            // กรองการสนทนาตามสถานะและข้อความค้นหา
+            let filteredConversations = Object.values(adminState.conversations);
+
+            // กรองตามสถานะ (waiting, answered, all)
+            if (currentStatus !== 'all') {
+                filteredConversations = filteredConversations.filter(conv => conv.status === currentStatus);
+            }
+
+            // กรองตามข้อความค้นหา
+            if (searchText) {
+                filteredConversations = filteredConversations.filter(conv => {
+                    const userInfo = conv.userInfo || {};
+                    const name = (userInfo.name || '').toLowerCase();
+                    const email = (userInfo.email || '').toLowerCase();
+                    const phone = (userInfo.phone || '').toLowerCase();
+                    const lastMessage = conv.lastMessage && conv.lastMessage.text ? conv.lastMessage.text.toLowerCase() : '';
+
+                    return name.includes(searchText) ||
+                           email.includes(searchText) ||
+                           phone.includes(searchText) ||
+                           lastMessage.includes(searchText);
+                });
+            }
+
+            // เรียงลำดับตามหัวตารางที่เลือก
+            filteredConversations.sort((a, b) => {
+                let valueA, valueB;
+
+                switch (sortState.column) {
+                    case 'name':
+                        valueA = (a.userInfo?.name || 'ไม่ระบุชื่อ').toLowerCase();
+                        valueB = (b.userInfo?.name || 'ไม่ระบุชื่อ').toLowerCase();
+                        break;
+
+                    case 'lastActivity':
+                        valueA = a.lastActivity || 0;
+                        valueB = b.lastActivity || 0;
+                        break;
+
+                    case 'lastMessage':
+                        valueA = (a.lastMessage?.text || '').toLowerCase();
+                        valueB = (b.lastMessage?.text || '').toLowerCase();
+                        break;
+
+                    case 'contact':
+                        const contactA = (a.userInfo?.phone || a.userInfo?.email || '').toLowerCase();
+                        const contactB = (b.userInfo?.phone || b.userInfo?.email || '').toLowerCase();
+                        valueA = contactA;
+                        valueB = contactB;
+                        break;
+
+                    case 'status':
+                        valueA = a.status || '';
+                        valueB = b.status || '';
+                        break;
+
+                    default:
+                        valueA = a.lastActivity || 0;
+                        valueB = b.lastActivity || 0;
+                }
+
+                // เปรียบเทียบค่า
+                let comparison = 0;
+                if (valueA < valueB) {
+                    comparison = -1;
+                } else if (valueA > valueB) {
+                    comparison = 1;
+                }
+
+                // ใช้ทิศทางการเรียงลำดับ
+                return sortState.direction === 'desc' ? -comparison : comparison;
+            });
+
+            // คำนวณจำนวนหน้าทั้งหมด
+            adminState.pagination.totalPages = Math.ceil(filteredConversations.length / adminState.pagination.itemsPerPage);
+
+            // ตรวจสอบว่าหน้าปัจจุบันถูกต้องหรือไม่
+            if (adminState.pagination.currentPage > adminState.pagination.totalPages) {
+                adminState.pagination.currentPage = Math.max(1, adminState.pagination.totalPages);
+            }
+
+            // สร้าง HTML
+            if (filteredConversations.length === 0) {
+                elements.conversationList.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">ไม่พบข้อมูลการสนทนาที่ตรงกับเงื่อนไข</td></tr>';
+                // ซ่อนปุ่มแบ่งหน้า
+                if (elements.paginationContainer) {
+                    elements.paginationContainer.style.display = 'none';
+                }
+                return;
+            }
+
+            // แบ่งข้อมูลตามหน้า
+            const startIndex = (adminState.pagination.currentPage - 1) * adminState.pagination.itemsPerPage;
+            const endIndex = startIndex + adminState.pagination.itemsPerPage;
+            const paginatedConversations = filteredConversations.slice(startIndex, endIndex);
+
+            let html = '';
+
+            paginatedConversations.forEach(conv => {
+                const userInfo = conv.userInfo || {};
+                const name = userInfo.name || 'ไม่ระบุชื่อ';
+                const email = userInfo.email || '-';
+                const phone = userInfo.phone || '-';
+
+                // จัดรูปแบบเวลา
+                const lastActivityDate = new Date(conv.lastActivity);
+                const formattedDate = `${lastActivityDate.toLocaleDateString('th-TH')}<br>${lastActivityDate.toLocaleTimeString('th-TH')}`;
+
+                // ข้อความล่าสุด
+                let lastMessageText = '-';
+                if (conv.lastMessage && conv.lastMessage.text) {
+                    lastMessageText = `"${conv.lastMessage.text.substring(0, 30)}${conv.lastMessage.text.length > 30 ? '...' : ''}"`;
+                }
+
+                // สถานะ
+                const statusClass = conv.status === 'waiting' ? 'pending' : 'completed';
+                const statusText = conv.status === 'waiting' ? 'รอตอบกลับ' : 'ตอบแล้ว';
+
+                html += `
+                    <tr>
+                        <td>${escapeHTML(name)}</td>
+                        <td>${formattedDate}</td>
+                        <td>${escapeHTML(lastMessageText)}</td>
+                        <td>${escapeHTML(phone)}<br>${escapeHTML(email)}</td>
+                        <td><span class="status ${statusClass}">${statusText}</span></td>
+                        <td><button class="action-btn chat-btn" data-id="${conv.sessionId}">คุยต่อเลย</button></td>
+                    </tr>
+                `;
+            });
+
+            elements.conversationList.innerHTML = html;
+
+            // อัปเดตแถบแบ่งหน้า
+            updatePaginationControls(filteredConversations.length);
+
+            // เพิ่ม Event Listeners สำหรับปุ่มแชท
+            document.querySelectorAll('.chat-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    const sessionId = this.dataset.id;
+                    openChatSession(sessionId);
+                });
+            });
+        }
+
+        // แทนที่ฟังก์ชัน renderConversationList เดิม
+        function renderConversationList() {
+            renderConversationListWithTableSort();
+        }
+
+        // เพิ่มการเรียกใช้งานเมื่อโหลดหน้า
+        document.addEventListener('DOMContentLoaded', function() {
+            // รอให้ DOM โหลดเสร็จแล้วค่อยเรียก initializeSorting
+            setTimeout(initializeSorting, 100);
+        });
+
+        // เพิ่มฟังก์ชันรีเซ็ตการเรียงลำดับ
+        function resetSorting() {
+            sortState.column = 'lastActivity';
+            sortState.direction = 'desc';
+            updateSortIndicators();
+        }
+
+        // อัปเดตฟังก์ชัน init เพื่อเรียกใช้ระบบการเรียงลำดับ
+        function initWithSorting() {
+            // ... โค้ดเดิม ...
+
+            // เพิ่มการเรียกใช้ระบบการเรียงลำดับ
+            initializeSorting();
+
+            // ... โค้ดเดิม ...
+        }
+    </script>
 </body>
 </html>

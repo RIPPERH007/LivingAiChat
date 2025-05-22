@@ -251,7 +251,7 @@ app.get('/admin-new', (req, res) => {
   res.sendFile(path.join(__dirname, 'public/admin-new.html'));
 });
 // เริ่มเซิร์ฟเวอร์
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server กำลังทำงานที่พอร์ต ${PORT}`);
 });

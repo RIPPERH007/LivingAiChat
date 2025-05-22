@@ -219,7 +219,7 @@
         try {
             // เชื่อมต่อ Socket.IO
             const socketUrl = window.location.hostname === 'localhost' ?
-                            'http://localhost:4000' :
+                            'http://localhost:3000' :
                             window.location.origin;
 
             // ตรวจสอบว่ามีการเชื่อมต่ออยู่แล้วหรือไม่
@@ -316,12 +316,35 @@
                 updateAdminStatusDisplay(data.adminActive, data.adminName);
 
                 // เพิ่มข้อความแจ้งเตือนในแชท
-                const message = data.adminActive
-                    ? `${data.adminName || 'แอดมิน'}กำลังให้บริการคุณ`
-                    : 'แชทบอทกลับมาให้บริการแล้ว';
+                if (data.adminActive) {
+                    // แอดมินเข้ามาให้บริการ - บอทหยุดทำงาน
+                    const message = `${data.adminName || 'แอดมิน'}กำลังให้บริการคุณ`;
+                    addSystemMessage(message);
 
-                addSystemMessage(message);
+                    // แสดงข้อความแจ้งให้ทราบว่าบอทหยุดทำงาน
+                    addSystemMessage('บอทจะหยุดตอบกลับชั่วคราว แอดมินจะเข้ามาช่วยเหลือคุณ');
+                } else {
+                    // แอดมินออกจากการให้บริการ - บอทกลับมาทำงาน
+                    addSystemMessage('แชทบอทกลับมาให้บริการแล้ว');
+
+                    // แสดงตัวเลือกสำหรับเริ่มการสนทนาใหม่
+                    setTimeout(() => {
+                        if (shouldBotRespond()) {
+                            const welcomeBackOptions = {
+                                type: 'chips',
+                                options: [
+                                    { text: 'ค้นหาอสังหาริมทรัพย์' },
+                                    { text: 'ติดต่อเจ้าหน้าที่อีกครั้ง' },
+                                    { text: 'ดูรายการยอดนิยม' }
+                                ]
+                            };
+
+                            addMessage('bot', 'สวัสดีค่ะ มีอะไรให้ช่วยเหลือต่อไหมคะ?', '', null, welcomeBackOptions.options);
+                        }
+                    }, 2000);
+                }
             });
+
 
             // เมื่อตัดการเชื่อมต่อ
             chatState.socket.on('disconnect', () => {
@@ -575,6 +598,12 @@
 
     function handleChipClick(chipElement) {
         // ถ้ากำลังประมวลผลการคลิกอยู่แล้ว ให้ยกเลิกการทำงานซ้ำ
+
+        if (!shouldBotRespond()) {
+                console.log('แอดมินกำลังเปิดใช้งานอยู่ บอทจะไม่ตอบสนองต่อการคลิก chip');
+                return;
+            }
+
         if (isChipProcessing) {
             console.log('กำลังประมวลผลการคลิกอยู่แล้ว ข้ามการทำงานซ้ำ');
             return;
@@ -1129,6 +1158,10 @@
 
 
     function showGreetingMessage() {
+        if (!shouldBotRespond()) {
+                console.log('แอดมินกำลังเปิดใช้งานอยู่ บอทจะไม่แสดง greeting message');
+                return;
+        }
 
         const chipsItem = {
                     type: 'chips',
@@ -1174,6 +1207,10 @@
 
     }
     function showTransactionTypeOptions() {
+        if (!shouldBotRespond()) {
+                console.log('แอดมินกำลังเปิดใช้งานอยู่ บอทจะไม่แสดงตัวเลือกประเภทธุรกรรม');
+                return;
+        }
         const chipsItem = {
             type: 'chips',
             options: [
@@ -1220,6 +1257,10 @@
     }
 
     function showPropertyTypeOptions() {
+        if (!shouldBotRespond()) {
+                console.log('แอดมินกำลังเปิดใช้งานอยู่ บอทจะไม่แสดงตัวเลือกประเภทอสังหาริมทรัพย์');
+                return;
+            }
         const chipsItem = {
             type: 'chips',
             options: [
@@ -1274,6 +1315,11 @@
         saveChatToLocalStorage();
     }
     function showLocationOptions() {
+
+         if (!shouldBotRespond()) {
+                console.log('แอดมินกำลังเปิดใช้งานอยู่ บอทจะไม่แสดงตัวเลือกทำเล');
+                return;
+            }
         // เพิ่มการตรวจสอบว่ามีข้อความทำเลอยู่แล้วหรือไม่
         const lastLocationMessage = checkForExistingLocationMessage();
         if (lastLocationMessage) {
@@ -1348,6 +1394,11 @@
 
 
     function showPriceOptions() {
+
+        if (!shouldBotRespond()) {
+                console.log('แอดมินกำลังเปิดใช้งานอยู่ บอทจะไม่แสดงตัวเลือกราคา');
+                return;
+            }
         // กำหนดตัวเลือกราคาตามประเภทธุรกรรมและประเภทอสังหาริมทรัพย์
         let priceOptions = [];
          if (chatState.lastPriceOptionsTime && (Date.now() - chatState.lastPriceOptionsTime < 5000)) {
@@ -1455,6 +1506,11 @@
     }
 
     function showSearchConfirmation() {
+
+            if (!shouldBotRespond()) {
+                    console.log('แอดมินกำลังเปิดใช้งานอยู่ บอทจะไม่แสดงยืนยันการค้นหา');
+                    return;
+                }
             // สร้างข้อความสรุปข้อมูลการค้นหา
             let summaryText = 'ดิฉันจะช่วยค้นหา';
 
@@ -1760,6 +1816,12 @@
 
     // ส่งข้อความไปยัง API
     function sendToApi(message, messageId, type = "1", options = null) {
+        // ตรวจสอบสถานะแอดมินก่อน - ถ้าแอดมินเปิดใช้งาน ไม่ส่งข้อความ
+        if (chatState.adminActive) {
+            console.log('แอดมินกำลังเปิดใช้งานอยู่ ไม่ส่งข้อความไปยัง API');
+            return;
+        }
+
         // สร้าง FormData สำหรับส่งข้อมูล
         const formData = new FormData();
         formData.append('room_id', chatState.sessionId);
@@ -1790,47 +1852,49 @@
         .then(data => {
             console.log('ส่งข้อความไปยัง API สำเร็จ:', data);
 
-            // ตรวจสอบการตอบกลับจาก API
-            if (data.status === "success" && data.message) {
-                // ถ้า API ตอบกลับมาพร้อม options สำหรับ chips
-                if (data.type === "2" && data.options && Array.isArray(data.options)) {
-                    // สร้าง UI chips จาก options ที่ได้รับ
-                    const chipsItem = {
-                        type: 'chips',
-                        options: data.options.map(option => ({
-                            text: option
-                        }))
-                    };
+            // ตรวจสอบการตอบกลับจาก API - เฉพาะเมื่อแอดมินไม่เปิดใช้งาน
+            if (shouldBotRespond()) {
+                if (data.status === "success" && data.message) {
+                    // ถ้า API ตอบกลับมาพร้อม options สำหรับ chips
+                    if (data.type === "2" && data.options && Array.isArray(data.options)) {
+                        // สร้าง UI chips จาก options ที่ได้รับ
+                        const chipsItem = {
+                            type: 'chips',
+                            options: data.options.map(option => ({
+                                text: option
+                            }))
+                        };
 
-                    // สร้าง HTML สำหรับ chips และแสดงผล
-                    const chipsHtml = renderChips(chipsItem);
+                        // สร้าง HTML สำหรับ chips และแสดงผล
+                        const chipsHtml = renderChips(chipsItem);
 
-                    // สร้าง message element
-                    const botMessageId = Date.now() + 1;  // + 1 เพื่อไม่ให้ซ้ำกับ messageId ของ user
-                    const messageElement = document.createElement('div');
-                    messageElement.className = 'message bot-message';
-                    messageElement.setAttribute('data-message-id', botMessageId);
-                    messageElement.innerHTML = `
-                        <div class="message-avatar">
-                            <img src="assets/icons/chat-avatar.jpg" alt="Bot">
-                        </div>
-                        <div class="message-content">
-                            <p>${escapeHTML(data.message)}</p>
-                            ${chipsHtml}
-                        </div>
-                    `;
+                        // สร้าง message element
+                        const botMessageId = Date.now() + 1;  // + 1 เพื่อไม่ให้ซ้ำกับ messageId ของ user
+                        const messageElement = document.createElement('div');
+                        messageElement.className = 'message bot-message';
+                        messageElement.setAttribute('data-message-id', botMessageId);
+                        messageElement.innerHTML = `
+                            <div class="message-avatar">
+                                <img src="assets/icons/chat-avatar.jpg" alt="Bot">
+                            </div>
+                            <div class="message-content">
+                                <p>${escapeHTML(data.message)}</p>
+                                ${chipsHtml}
+                            </div>
+                        `;
 
-                    // เพิ่มลงใน DOM
-                    elements.chatMessages.appendChild(messageElement);
+                        // เพิ่มลงใน DOM
+                        elements.chatMessages.appendChild(messageElement);
 
-                    // เพิ่ม Event Listeners สำหรับ chips
-                    addInteractiveListeners(messageElement);
+                        // เพิ่ม Event Listeners สำหรับ chips
+                        addInteractiveListeners(messageElement);
 
-                    // เลื่อนไปที่ข้อความล่าสุด
-                    scrollToBottom();
+                        // เลื่อนไปที่ข้อความล่าสุด
+                        scrollToBottom();
 
-                    // บันทึกข้อมูลลง localStorage
-                    saveChatToLocalStorage();
+                        // บันทึกข้อมูลลง localStorage
+                        saveChatToLocalStorage();
+                    }
                 }
             }
         })
@@ -1838,6 +1902,7 @@
             console.error('เกิดข้อผิดพลาดในการส่งข้อความไปยัง API:', error);
         });
     }
+
 
     function addInteractiveListeners(richContentElement) {
         console.log('Setting up interactive elements');
@@ -1922,6 +1987,10 @@
     async function processPropertySearchMessage(message) {
         if (!message) return;
 
+         if (!shouldBotRespond()) {
+                console.log('แอดมินกำลังเปิดใช้งานอยู่ บอทจะไม่ประมวลผลข้อความ');
+                return;
+            }
         // ป้องกันการเรียกฟังก์ชันซ้ำซ้อนในระยะเวลาใกล้เคียงกัน
         if (chatState.isProcessingMessage) {
             console.log('กำลังประมวลผลข้อความอื่นอยู่ ไม่ประมวลผลข้อความนี้');
@@ -1951,15 +2020,9 @@
                             resetPropertySearch();
 
                             return; // ออกจากฟังก์ชันเมื่อรีเซ็ต
-                        }else if (lowerMessage.includes('ติดต่อเจ้าหน้าที่') ||
-                                     lowerMessage.includes('ติดต่อแอดมิน') ||
-                                     lowerMessage.includes('ติดต่อคน') ||
-                                     lowerMessage.includes('คุยกับคน') ||
-                                     lowerMessage.includes('ต้องการคุยกับแอดมิน') ||
-                                     lowerMessage.includes('ขอคุยกับเจ้าหน้าที่') ||
-                                     lowerMessage.includes('ขอติดต่อเจ้าหน้าที่') ||
-                                     lowerMessage.includes('ขอคุยกับคน') ||
-                                     lowerMessage.includes('อยากคุยกับคนจริงๆ')) {
+                        }
+
+                         if (lowerMessage.includes('ติดต่อเจ้าหน้าที่') ) {
 
                                      // ติดต่อเจ้าหน้าที่
                                      contactAdmin();
@@ -3340,6 +3403,19 @@ async function contactAdmin() {
             ];
             return defaultLocations;
         }
+    }
+
+    function shouldBotRespond() {
+        // ถ้าแอดมินเปิดใช้งาน บอทจะไม่ตอบกลับ
+        if (chatState.adminActive) {
+            console.log('แอดมินกำลังเปิดใช้งานอยู่ บอทจะไม่ตอบกลับ');
+            return false;
+        }
+        return true;
+    }
+
+    function shouldShowBotOptions() {
+        return !chatState.adminActive;
     }
 
     // เริ่มการทำงานของสคริปต์
