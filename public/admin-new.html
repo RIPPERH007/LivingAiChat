@@ -885,7 +885,7 @@
 
 
 <!-- JavaScript -->
-<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.piesocket.com/v3/piesocket.min.js"></script>
 <script>
     // สถานะของแอดมิน
     const adminState = {
@@ -1410,16 +1410,17 @@ function openChatSession(sessionId) {
   updateAdminStatusBtn();
 
   // ส่งสถานะแอดมินผ่าน Socket.IO
-  if (adminState.socket) {
-    adminState.socket.emit('admin_status_change', {
-      type: 'admin_status_change',
-      adminActive: true,
-      timestamp: Date.now(),
-      room: adminState.currentSessionId,
-      adminId: adminState.adminInfo.id,
-      adminName: adminState.adminInfo.name
-    });
-  }
+
+  if (adminState.adminChannel) {
+            adminState.adminChannel.publish('admin_status_change', {
+                type: 'admin_status_change',
+                adminActive: true,
+                timestamp: Date.now(),
+                room: adminState.currentSessionId,
+                adminId: adminState.adminInfo.id,
+                adminName: adminState.adminInfo.name
+            });
+        }
 
   // แสดงการแจ้งเตือน
   showNotification('แอดมินกำลังให้บริการในห้องแชทนี้');
@@ -1743,9 +1744,8 @@ function closeChatPanel() {
         adminState.adminActive = false;
         updateAdminStatusBtn();
 
-        // ส่งสถานะแอดมินผ่าน Socket.IO
-        if (adminState.socket) {
-            adminState.socket.emit('admin_status_change', {
+        if (adminState.adminChannel) {
+            adminState.adminChannel.publish('admin_status_change', {
                 type: 'admin_status_change',
                 adminActive: false,
                 timestamp: Date.now(),
@@ -1784,15 +1784,14 @@ function handlePageUnload() {
     if (adminState.currentSessionId && adminState.adminActive && adminState.socket) {
         console.log('Admin ออกจากระบบ - ปิด active status');
 
-        // ส่งสัญญาณ admin inactive ก่อนปิดหน้า
-        adminState.socket.emit('admin_status_change', {
-            type: 'admin_status_change',
-            adminActive: false,
-            timestamp: Date.now(),
-            room: adminState.currentSessionId,
-            adminId: adminState.adminInfo.id,
-            adminName: adminState.adminInfo.name
-        });
+            adminState.adminChannel.publish('admin_status_change', {
+                type: 'admin_status_change',
+                adminActive: false,
+                timestamp: Date.now(),
+                room: adminState.currentSessionId,
+                adminId: adminState.adminInfo.id,
+                adminName: adminState.adminInfo.name
+            });
 
         // ออกจากห้องแชท
         adminState.socket.emit('leave', adminState.currentSessionId);
@@ -1876,16 +1875,18 @@ function sendAdminMessage() {
   });
 
   // ส่งข้อความผ่าน Socket.IO ด้วย (ถ้าต้องการ)
-  if (adminState.socket) {
-    adminState.socket.emit('new_message', {
-      sender: 'admin',
-      text: message,
-      adminId: adminState.adminInfo.id,
-      adminName: adminState.adminInfo.name,
-      timestamp: timestamp,
-      room: adminState.currentSessionId
+
+  if (adminState.adminChannel) {
+    adminState.adminChannel.publish('new_message', {
+        sender: 'admin',
+        text: message,
+        adminId: adminState.adminInfo.id,
+        adminName: adminState.adminInfo.name,
+        timestamp: timestamp,
+        room: adminState.currentSessionId
     });
-  }
+}
+
 
   // เคลียร์ช่องข้อความ
   elements.adminChatInput.value = '';
@@ -1900,16 +1901,16 @@ function toggleAdminStatus() {
     updateAdminStatusBtn();
 
     // ส่งการเปลี่ยนสถานะไปยัง Socket.IO
-    if (adminState.socket) {
-        adminState.socket.emit('admin_status_change', {
-            type: 'admin_status_change',
-            adminActive: adminState.adminActive,
-            timestamp: Date.now(),
-            room: adminState.currentSessionId,
-            adminId: adminState.adminInfo.id,
-            adminName: adminState.adminInfo.name
-        });
-    }
+    if (adminState.adminChannel) {
+            adminState.adminChannel.publish('admin_status_change', {
+                type: 'admin_status_change',
+                adminActive: adminState.adminActive,
+                timestamp: Date.now(),
+                room: adminState.currentSessionId,
+                adminId: adminState.adminInfo.id,
+                adminName: adminState.adminInfo.name
+            });
+        }
 
     // แสดงการแจ้งเตือน
     showNotification(`สถานะแอดมิน: ${adminState.adminActive ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}`);
@@ -2388,12 +2389,10 @@ document.addEventListener('DOMContentLoaded', init);
 
         // อัปเดตฟังก์ชัน init เพื่อเรียกใช้ระบบการเรียงลำดับ
         function initWithSorting() {
-            // ... โค้ดเดิม ...
 
             // เพิ่มการเรียกใช้ระบบการเรียงลำดับ
             initializeSorting();
 
-            // ... โค้ดเดิม ...
         }
     </script>
 </body>

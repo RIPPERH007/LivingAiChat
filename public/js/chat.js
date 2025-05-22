@@ -210,63 +210,55 @@
    }
     // เชื่อมต่อกับ Socket.IO
     function connectSocket() {
-        // ตรวจสอบว่า Socket.IO ถูกโหลดแล้วหรือไม่
-        if (typeof io === 'undefined') {
-            console.error('Socket.IO library not loaded! Make sure to include the Socket.IO client script.');
+        // ตรวจสอบว่า PieSocket ถูกโหลดแล้วหรือไม่
+        if (typeof PieSocket === 'undefined') {
+            console.error('PieSocket library not loaded!');
             return false;
         }
 
         try {
-            // เชื่อมต่อ Socket.IO
-            const socketUrl = window.location.hostname === 'localhost' ?
-                            'http://localhost:3000' :
-                            window.location.origin;
+            const clusterId = 's8661.sgp1';
+            const apiKey = 'mOGIGJTyKOmsesgjpchKEECKLekVGmuCSwNv2wpl';
 
             // ตรวจสอบว่ามีการเชื่อมต่ออยู่แล้วหรือไม่
-            if (chatState.socket && chatState.socket.connected) {
-                console.log('Socket is already connected:', chatState.socket.id);
+            if (chatState.socket && chatState.currentChannel) {
+                console.log('PieSocket is already connected');
                 return true;
             }
 
             // สร้างการเชื่อมต่อใหม่
-            chatState.socket = io(socketUrl, {
-                reconnectionAttempts: 5,
-                reconnectionDelay: 1000,
-                timeout: 10000
+            chatState.socket = new PieSocket({
+                clusterId: clusterId,
+                apiKey: apiKey,
+                notifySelf: 1
             });
 
-            // เมื่อเชื่อมต่อสำเร็จ
-            chatState.socket.on('connect', () => {
-                console.log('Connected to Socket.IO with ID:', chatState.socket.id);
+            // Subscribe ไปยัง channel
+            const channelName = `chat-${chatState.sessionId}`;
 
-                // เข้าร่วมห้องแชทตาม sessionId
-                chatState.socket.emit('join', chatState.sessionId);
+            chatState.socket.subscribe(channelName).then((channel) => {
+                console.log('Connected to PieSocket with channel:', channelName);
+                chatState.currentChannel = channel;
 
-                // อัปเดตสถานะการเชื่อมต่อ (ถ้ามี)
+                // อัปเดตสถานะการเชื่อมต่อ
                 if (elements.socketStatus) {
                     elements.socketStatus.textContent = 'Connected';
                     elements.socketStatus.classList.add('connected');
                     elements.socketStatus.classList.remove('disconnected');
                 }
-            });
 
-            // เมื่อมีข้อความใหม่จากเซิร์ฟเวอร์
-            chatState.socket.on('new_message', (message) => {
-                console.log('New message received via socket:', message);
+                // เมื่อมีข้อความใหม่
+                channel.listen('new_message', (message) => {
+                    console.log('New message received via PieSocket:', message);
 
-                // เช็คว่าเป็นข้อความที่แสดงไปแล้วหรือไม่
-                 if (isMessageDuplicate(message)) {
-                        console.log('Duplicate message from socket, ignoring:', message);
+                    // เช็คว่าเป็นข้อความที่แสดงไปแล้วหรือไม่
+                    if (isMessageDuplicate(message)) {
+                        console.log('Duplicate message, ignoring:', message);
                         return;
                     }
 
-                    // เพิ่มบันทึกข้อความนี้ลงใน cache
-                    if (!chatState.receivedMessages) chatState.receivedMessages = {};
-                    const msgKey = `${message.sender}-${message.timestamp}`;
-                    chatState.receivedMessages[msgKey] = true;
-                // แสดงข้อความตามประเภท
-                 if (message.sender === 'admin') {
-                        // ข้อความจากแอดมิน
+                    // แสดงข้อความตามประเภท
+                    if (message.sender === 'admin') {
                         const messageElement = document.createElement('div');
                         messageElement.className = 'message bot-message';
                         messageElement.setAttribute('data-message-id', message.timestamp);
@@ -282,111 +274,39 @@
 
                         elements.chatMessages.appendChild(messageElement);
                         scrollToBottom();
-
-                        // บันทึกข้อมูลลง localStorage
                         saveChatToLocalStorage();
                     }
                     else if (message.sender === 'system') {
-                        // ข้อความระบบ
                         addSystemMessage(message.text);
                     }
-            });
+                });
 
-            // รับการแจ้งเตือนผลการค้นหาอสังหาริมทรัพย์
-            chatState.socket.on('property_search_results', (data) => {
-                console.log('Property search results received:', data);
+                // เมื่อมีการอัปเดตสถานะแอดมิน
+                channel.listen('admin_status_change', (data) => {
+                    console.log('Admin status changed:', data);
 
-                // ตรวจสอบว่ามีข้อมูลหรือไม่
-                if (data.success && data.data) {
-                    // ขณะนี้เซิร์ฟเวอร์จะส่งข้อความผ่าน new_message อยู่แล้ว
-                    console.log('Search successful - results will be displayed via new_message event');
-                } else {
-                    console.log('No search results found');
-                }
-            });
+                    chatState.adminActive = data.adminActive;
+                    updateAdminStatusDisplay(data.adminActive, data.adminName);
 
-            // เมื่อมีการอัปเดตสถานะแอดมิน
-            chatState.socket.on('admin_status_change', (data) => {
-                console.log('Admin status changed:', data);
+                    if (data.adminActive) {
+                        const message = `${data.adminName || 'แอดมิน'}กำลังให้บริการคุณ`;
+                        addSystemMessage(message);
+                        addSystemMessage('บอทจะหยุดตอบกลับชั่วคราว แอดมินจะเข้ามาช่วยเหลือคุณ');
+                    } else {
+                        addSystemMessage('แชทบอทกลับมาให้บริการแล้ว');
+                    }
+                });
 
-                // อัปเดตสถานะแอดมิน
-                chatState.adminActive = data.adminActive;
+                // รับการแจ้งเตือนประวัติการสนทนา
+                channel.listen('conversation_history', (data) => {
+                    console.log('Received conversation history:', data);
+                    if (data.messages && data.messages.length > 0) {
+                        displayChatHistory(data.messages);
+                    }
+                });
 
-                // แสดงสถานะในแชท
-                updateAdminStatusDisplay(data.adminActive, data.adminName);
-
-                // เพิ่มข้อความแจ้งเตือนในแชท
-                if (data.adminActive) {
-                    // แอดมินเข้ามาให้บริการ - บอทหยุดทำงาน
-                    const message = `${data.adminName || 'แอดมิน'}กำลังให้บริการคุณ`;
-                    addSystemMessage(message);
-
-                    // แสดงข้อความแจ้งให้ทราบว่าบอทหยุดทำงาน
-                    addSystemMessage('บอทจะหยุดตอบกลับชั่วคราว แอดมินจะเข้ามาช่วยเหลือคุณ');
-                } else {
-                    // แอดมินออกจากการให้บริการ - บอทกลับมาทำงาน
-                    addSystemMessage('แชทบอทกลับมาให้บริการแล้ว');
-
-                    // แสดงตัวเลือกสำหรับเริ่มการสนทนาใหม่
-                    setTimeout(() => {
-                        if (shouldBotRespond()) {
-                            const welcomeBackOptions = {
-                                type: 'chips',
-                                options: [
-                                    { text: 'ค้นหาอสังหาริมทรัพย์' },
-                                    { text: 'ติดต่อเจ้าหน้าที่อีกครั้ง' },
-                                    { text: 'ดูรายการยอดนิยม' }
-                                ]
-                            };
-
-                            addMessage('bot', 'สวัสดีค่ะ มีอะไรให้ช่วยเหลือต่อไหมคะ?', '', null, welcomeBackOptions.options);
-                        }
-                    }, 2000);
-                }
-            });
-
-
-            // เมื่อตัดการเชื่อมต่อ
-            chatState.socket.on('disconnect', () => {
-                console.log('Disconnected from Socket.IO');
-
-                // อัปเดตสถานะการเชื่อมต่อ (ถ้ามี)
-                if (elements.socketStatus) {
-                    elements.socketStatus.textContent = 'Disconnected';
-                    elements.socketStatus.classList.add('disconnected');
-                    elements.socketStatus.classList.remove('connected');
-                }
-            });
-
-            // เมื่อกำลังพยายามเชื่อมต่อใหม่
-            chatState.socket.on('reconnecting', (attemptNumber) => {
-                console.log(`Attempting to reconnect (${attemptNumber})...`);
-
-                if (elements.socketStatus) {
-                    elements.socketStatus.textContent = `Reconnecting (${attemptNumber})`;
-                    elements.socketStatus.classList.add('disconnected');
-                }
-            });
-
-            // เมื่อเชื่อมต่อใหม่สำเร็จ
-            chatState.socket.on('reconnect', () => {
-                console.log('Reconnected successfully');
-
-                // เข้าร่วมห้องแชทอีกครั้ง
-                chatState.socket.emit('join', chatState.sessionId);
-
-                if (elements.socketStatus) {
-                    elements.socketStatus.textContent = 'Connected';
-                    elements.socketStatus.classList.add('connected');
-                    elements.socketStatus.classList.remove('disconnected');
-                }
-            });
-
-            // เมื่อเกิดข้อผิดพลาดในการเชื่อมต่อ
-            chatState.socket.on('connect_error', (error) => {
-                console.error('Socket.IO connection error:', error);
-
-                // อัปเดตสถานะการเชื่อมต่อ (ถ้ามี)
+            }).catch((error) => {
+                console.error('Error subscribing to PieSocket:', error);
                 if (elements.socketStatus) {
                     elements.socketStatus.textContent = 'Connection Error';
                     elements.socketStatus.classList.add('disconnected');
@@ -394,20 +314,10 @@
                 }
             });
 
-            // รับการแจ้งเตือนประวัติการสนทนา
-            chatState.socket.on('conversation_history', (data) => {
-                console.log('Received conversation history:', data);
-
-                if (data.messages && data.messages.length > 0) {
-                    // แสดงประวัติการสนทนา
-                    displayChatHistory(data.messages);
-                }
-            });
-
-            console.log('Socket.IO initialized, waiting for connection...');
+            console.log('PieSocket initialized');
             return true;
         } catch (error) {
-            console.error('Error connecting to Socket.IO:', error);
+            console.error('Error connecting to PieSocket:', error);
             return false;
         }
     }
@@ -870,7 +780,10 @@
             }
 
             // ส่งข้อมูลผ่าน socket
-            chatState.socket.emit('new_message', socketData);
+            if (chatState.currentChannel) {
+                chatState.currentChannel.publish('new_message', socketData);
+                console.log(`ส่งข้อความ ${sender} ผ่าน PieSocket:`, socketData);
+            }
             console.log(`ส่งข้อความ ${sender} ${options ? 'ที่มี chips' : ''} ${richContent ? 'ที่มี rich content' : ''} ผ่าน socket:`, socketData);
         }
     }
