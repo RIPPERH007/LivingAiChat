@@ -80,16 +80,6 @@
         };
     }
 
-    if (elements.chatSendBtn) {
-            // ลบ event handlers เดิมก่อน
-            elements.chatSendBtn.onclick = null;
-            // เพิ่ม handler ใหม่
-            elements.chatSendBtn.onclick = function(e) {
-                if (e) e.preventDefault();
-                sendMessage();
-                return false;
-            };
-        }
 
     if (elements.chatNowBtn) {
         elements.chatNowBtn.onclick = function() {
@@ -99,26 +89,47 @@
         };
     }
 
+    if (elements.chatSendBtn) {
+        console.log('Setting up chat send button listener');
+
+        // ลบ event handlers เดิมก่อน
+        elements.chatSendBtn.onclick = null;
+
+        // เพิ่ม handler ใหม่
+        elements.chatSendBtn.onclick = function(e) {
+            console.log('Send button clicked!');
+            if (e) e.preventDefault();
+            sendMessage();
+            return false;
+        };
+    } else {
+        console.error('Chat send button not found!');
+    }
+
+    // ตรวจสอบ Enter key
     if (elements.chatInput) {
-            // ลบ event handlers เดิมก่อน
-            elements.chatInput.onkeypress = null;
+        console.log('Setting up chat input enter listener');
 
-            // ฟังก์ชันจัดการ Enter key
-            const handleEnterKey = function(e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    sendMessage();
-                    return false;
-                }
-            };
+        // ลบ event handlers เดิมก่อน
+        elements.chatInput.onkeypress = null;
 
-            // เพิ่ม handler ใหม่
-            elements.chatInput.removeEventListener('keypress', handleEnterKey);
-            elements.chatInput.addEventListener('keypress', handleEnterKey);
-        }
+        // ฟังก์ชันจัดการ Enter key
+        const handleEnterKey = function(e) {
+            if (e.key === 'Enter') {
+                console.log('Enter key pressed!');
+                e.preventDefault();
+                sendMessage();
+                return false;
+            }
+        };
 
-    // ติดตั้ง Event handler สำหรับ chip
-    // หมายเหตุ: สำหรับ chip ยังคงต้องใช้ document.addEventListener เพราะ chip อาจถูกสร้างขึ้นมาในภายหลัง
+        // เพิ่ม handler ใหม่
+        elements.chatInput.removeEventListener('keypress', handleEnterKey);
+        elements.chatInput.addEventListener('keypress', handleEnterKey);
+    } else {
+        console.error('Chat input not found!');
+    }
+
     document.addEventListener('click', function(e) {
         if (e.target.classList.contains('chip')) {
             console.log('คลิกบน chip');
@@ -706,51 +717,70 @@
         scrollToBottom();
     }
 
-    // ส่งข้อความ
-   function sendMessage() {
-       const message = elements.chatInput.value.trim();
-       if (!message || chatState.isSending) return;
 
-       try {
-           // ตั้งสถานะเป็นกำลังส่ง
-           chatState.isSending = true;
+    function sendMessage() {
+        console.log('=== sendMessage() called ===');
 
-           const messageId = Date.now();
+        const message = elements.chatInput.value.trim();
+        console.log('Message to send:', message);
 
-           // แสดงข้อความผู้ใช้
-           addMessage('user', message, '', messageId);
-           chatState.lastMessageSender = 'user';
+        if (!message || chatState.isSending) {
+            console.log('Message empty or already sending');
+            return;
+        }
 
-           // เคลียร์ช่องข้อความ
-           elements.chatInput.value = '';
+        try {
+            console.log('Processing message...');
 
-           // ส่งข้อความไปยัง API
-           sendToApi(message, messageId);
+            // ตั้งสถานะเป็นกำลังส่ง
+            chatState.isSending = true;
 
-           // ประมวลผลข้อความเพื่อการค้นหาอสังหาริมทรัพย์
-           processPropertySearchMessage(message);
+            const messageId = Date.now();
+            console.log('Generated messageId:', messageId);
 
-           // บันทึกข้อมูลลง localStorage
-           saveChatToLocalStorage();
+            // แสดงข้อความผู้ใช้ (ตรงนี้สำคัญ - ต้องเรียก addMessage)
+            console.log('Calling addMessage for user...');
+            addMessage('user', message, '', messageId);
 
-       } finally {
-           // รีเซ็ตสถานะหลังจาก 1 วินาที
-           setTimeout(() => {
-               chatState.isSending = false;
-           }, 1000);
-       }
-   }
+            chatState.lastMessageSender = 'user';
+
+            // เคลียร์ช่องข้อความ
+            elements.chatInput.value = '';
+
+            // ส่งข้อความไปยัง API
+            sendToApi(message, messageId);
+
+            // ประมวลผลข้อความเพื่อการค้นหาอสังหาริมทรัพย์
+            processPropertySearchMessage(message);
+
+            // บันทึกข้อมูลลง localStorage
+            saveChatToLocalStorage();
+
+        } finally {
+            // รีเซ็ตสถานะหลังจาก 1 วินาที
+            setTimeout(() => {
+                chatState.isSending = false;
+            }, 1000);
+        }
+    }
 
 
     // แก้ไขฟังก์ชัน addMessage ให้ส่ง Socket จากทั้งฝั่ง User และ Bot
     function addMessage(sender, text, senderName = '', messageId = null, options = null, richContent = null) {
-    const timestamp = messageId || Date.now();
+    console.log('=== addMessage() called ===');
+        console.log('Sender:', sender);
+        console.log('Text:', text);
+        console.log('MessageId:', messageId);
 
-    // ตรวจสอบว่ามีข้อความนี้อยู่แล้วหรือไม่
-    if (isMessageDuplicate(timestamp)) {
-        console.log('ข้อความซ้ำ ไม่แสดงซ้ำ:', text);
-        return timestamp;
-    }
+        const timestamp = messageId || Date.now();
+
+        // ตรวจสอบว่ามีข้อความนี้อยู่แล้วหรือไม่
+        if (isMessageDuplicate(timestamp)) {
+            console.log('ข้อความซ้ำ ไม่แสดงซ้ำ:', text);
+            return timestamp;
+        }
+
+        console.log('Creating message element...');
 
     const messageElement = document.createElement('div');
     messageElement.className = `message ${sender}-message`;
@@ -802,13 +832,28 @@
     // เลื่อนไปที่ข้อความล่าสุด
     scrollToBottom();
 
-    if ((sender === 'user' || sender === 'bot') && chatState.socket && chatState.socket.connected &&
+    // หาส่วนท้ายของฟังก์ชัน addMessage() (ประมาณบรรทัด 850-950)
+    // เพิ่ม debug ตรงนี้:
+
+    console.log('=== Checking socket send conditions ===');
+    console.log('sender:', sender);
+    console.log('chatState.socket:', !!chatState.socket);
+    console.log('chatState.currentChannel:', !!chatState.currentChannel);
+    console.log('messageElement:', !!messageElement);
+    console.log('from-socket attribute:', messageElement.hasAttribute('from-socket'));
+
+    if ((sender === 'user' || sender === 'bot') && chatState.socket && chatState.currentChannel &&
         !messageElement.hasAttribute('from-socket')) {
+
+        console.log('=== CONDITIONS MET - SENDING SOCKET ===');
+
         messageElement.setAttribute('from-socket', 'true');
 
         // ไม่ต้องส่งซ้ำถ้าข้อความนี้อยู่ใน chat cache แล้ว
         const cacheKey = `${sender}-${timestamp}`;
         if (!chatState.messageSentCache || !chatState.messageSentCache[cacheKey]) {
+            console.log('Message not in cache, preparing to send...');
+
             // เก็บ cache ว่าข้อความนี้ถูกส่งแล้ว
             if (!chatState.messageSentCache) chatState.messageSentCache = {};
             chatState.messageSentCache[cacheKey] = true;
@@ -818,35 +863,30 @@
                 sender: sender,
                 text: text,
                 timestamp: timestamp,
-                room: chatState.sessionId
+                room: chatState.sessionId,
+                sessionId: chatState.sessionId,
+                platform: 'ownweb'
             };
 
-            // ถ้ามี options ให้เพิ่มข้อมูล options และ type
-            if (options && Array.isArray(options) && options.length > 0) {
-                socketData.type = "2"; // ประเภทข้อความที่มีตัวเลือก (chips)
-                socketData.options = options.map(opt => typeof opt === 'object' ? opt.text || opt : opt);
-            }
-
-            // ถ้ามี richContent ให้เพิ่มข้อมูล payload และ type
-            if (richContent) {
-                socketData.type = "3"; // ประเภทข้อความที่มี rich content
-                socketData.payload = richContent;
-            }
+            console.log('Socket data prepared:', socketData);
 
             // ส่งข้อมูลผ่าน socket
             if (chatState.currentChannel) {
-                // เพิ่มข้อมูล sessionId และ platform
-                const messageData = {
-                    ...socketData,
-                    sessionId: chatState.sessionId,
-                    platform: 'ownweb'
-                };
-
-                chatState.currentChannel.publish('new_message', messageData);
-                console.log(`ส่งข้อความ ${sender} ผ่าน PieSocket:`, messageData);
+                console.log('Sending via PieSocket...');
+                chatState.currentChannel.publish('new_message', socketData);
+                console.log(`ส่งข้อความ ${sender} ผ่าน PieSocket:`, socketData);
+            } else {
+                console.error('currentChannel is null!');
             }
-            console.log(`ส่งข้อความ ${sender} ${options ? 'ที่มี chips' : ''} ${richContent ? 'ที่มี rich content' : ''} ผ่าน socket:`, socketData);
+        } else {
+            console.log('Message already in cache, not sending again');
         }
+    } else {
+        console.log('=== CONDITIONS NOT MET ===');
+        console.log('Condition 1 - is user or bot:', (sender === 'user' || sender === 'bot'));
+        console.log('Condition 2 - has socket:', !!chatState.socket);
+        console.log('Condition 3 - has channel:', !!chatState.currentChannel);
+        console.log('Condition 4 - not from socket:', !messageElement.hasAttribute('from-socket'));
     }
 
     // บันทึกข้อมูลลง localStorage

@@ -997,6 +997,12 @@
 
             // รับข้อความใหม่
             channel.listen('new_message', (data) => {
+                console.log('=== ADMIN RECEIVED MESSAGE ===');
+                console.log('Message data:', data);
+                console.log('Sender:', data.sender);
+                console.log('Room:', data.room);
+                console.log('SessionId:', data.sessionId);
+
                 console.log('ได้รับข้อความใหม่:', data);
 
                 if (!data.room && !data.sessionId) {
