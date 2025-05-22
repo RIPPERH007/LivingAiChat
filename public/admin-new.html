@@ -773,6 +773,8 @@
 
 </head>
 <body>
+<script src="env-config.js"></script>
+
 
 <div class="admin-container">
     <!-- Main Content -->
@@ -781,7 +783,6 @@
         <header class="admin-header" style="padding: 10px 20px; background-color: #5e35b1; color: white; display: flex; justify-content: space-between; align-items: center;">
             <h1 style="font-size: 20px;">แอดมินแชท</h1>
             <div class="header-actions">
-                <!-- สถานะการเชื่อมต่อ Socket.IO -->
                 <div id="socket-status" class="socket-status">
                     กำลังเชื่อมต่อ...
                 </div>
@@ -882,8 +883,6 @@
         </div>
 </div>
 
-
-
 <!-- JavaScript -->
 <script src="https://cdn.piesocket.com/v3/piesocket.min.js"></script>
 <script>
@@ -899,8 +898,8 @@
         },
         adminActive: false,
         currentWebId: '001', // Web ID สำหรับใช้กับ API
-        apiBaseUrl: 'https://ownwebdev1.livinginsider.com/api/v1', // เพิ่ม Base URL สำหรับ API
-        apiToken: 'b059a15197926350fb43271477779d0fc04f6a4701eb3367c999c59eeae1f890', // เพิ่ม Bearer Token
+        apiBaseUrl: window.env.BASE_API_URL, // เพิ่ม Base URL สำหรับ API
+        apiToken: window.env.TOKEN_API, // เพิ่ม Bearer Token
         cachedData : {},
         pagination : {
             currentPage: 1,
@@ -937,14 +936,29 @@
 
     };
 
-    // เชื่อมต่อ Socket.IO
    function connectSocket() {
     try {
-        const socketUrl = window.location.origin;
-        adminState.socket = io(socketUrl);
+        const clusterId = 's8661.sgp1';
+        const apiKey = 'mOGIGJTyKOmsesgjpchKEECKLekVGmuCSwNv2wpl';
+        const jwtToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwdWJsaWMtY2hhbm5lbC1vd253ZWItZGV2ZWxvcG1lbnQiLCJwbGF0Zm9ybSI6Im93bndlYiIsImlhdCI6MTc0NzkwMDg0MSwiZXhwIjoyMDYzMjYwODQxfQ.-QO3q_RExUV9NjOMpPuJXqnisGaH1934nN8xvlDJgZU';
 
-        adminState.socket.on('connect', () => {
-            console.log('เชื่อมต่อกับ Socket.IO สำเร็จ:', adminState.socket.id);
+        adminState.socket = new PieSocket({
+            clusterId: clusterId,
+            apiKey: apiKey,
+            notifySelf: 1,
+            forceAuth: true,
+            jwt: jwtToken
+        });
+
+        // กำหนด channel name ตาม pattern ใหม่
+        const environment = 'development'; // หรือ 'production' ตาม NODE_ENV
+        const channelName = `public-channel-ownweb-${environment}`;
+
+        adminState.socket.subscribe(channelName, {
+            platform: 'ownweb'
+        }).then((channel) => {
+            console.log('เชื่อมต่อกับ PieSocket สำเร็จ:', channelName);
+            adminState.adminChannel = channel;
 
             if (elements.socketStatus) {
                 elements.socketStatus.textContent = 'เชื่อมต่อแล้ว';
@@ -952,77 +966,53 @@
                 elements.socketStatus.classList.remove('disconnected');
             }
 
-            // ร้องขอเข้าร่วมทุกห้องทันที (เฉพาะแอดมิน)
-            adminState.socket.emit('join_all_rooms');
-            console.log('ส่งคำขอเข้าร่วมทุกห้อง');
-        });
+            // รับข้อความใหม่
+            channel.listen('new_message', (data) => {
+                console.log('ได้รับข้อความใหม่:', data);
 
-        // *** เพิ่มการจัดการ disconnect ***
-        adminState.socket.on('disconnect', () => {
-            console.log('ตัดการเชื่อมต่อจาก Socket.IO');
-
-            // ถ้ามีการเปิดแชทและ admin active อยู่ ให้รีเซ็ต
-            if (adminState.currentSessionId && adminState.adminActive) {
-                adminState.adminActive = false;
-                updateAdminStatusBtn();
-                console.log('Socket disconnect - รีเซ็ต admin status');
-            }
-
-            if (elements.socketStatus) {
-                elements.socketStatus.textContent = 'ขาดการเชื่อมต่อ';
-                elements.socketStatus.classList.add('disconnected');
-                elements.socketStatus.classList.remove('connected');
-            }
-        });
-
-        // รับข้อความใหม่
-        adminState.socket.on('new_message', (data) => {
-            console.log('ได้รับข้อความใหม่:', data);
-
-            // ตรวจสอบว่าข้อมูลมีครบหรือไม่
-            if (!data.room || !data.sender) {
-                console.error('ข้อมูลข้อความไม่ครบถ้วน:', data);
-                return;
-            }
-
-            // อัปเดตการสนทนาในรายการ
-            updateConversationInList(data);
-
-            // ถ้าเป็นห้องที่กำลังดูอยู่ ให้แสดงข้อความ
-            if (data.room === adminState.currentSessionId) {
-                addMessageToChat(data);
-            } else {
-                // ถ้าเป็นห้องอื่น แสดงการแจ้งเตือน
-                if (data.sender === 'user') {
-                    showNotification(`มีข้อความใหม่จากผู้ใช้ในห้อง ${data.room}`);
+                if (!data.room && !data.sessionId) {
+                    console.error('ข้อมูลข้อความไม่ครบถ้วน: ไม่มี room หรือ sessionId');
+                    return;
                 }
-            }
-        });
 
-        adminState.socket.on('joined_all_rooms', (data) => {
-            console.log('เข้าร่วมห้องทั้งหมดแล้ว:', data);
-        });
+                const roomId = data.room || data.sessionId;
+                updateConversationInList({...data, room: roomId});
 
-        // รับการแจ้งเตือนเมื่อมีผู้ใช้ต้องการติดต่อแอดมิน
-        adminState.socket.on('user_request_agent', (data) => {
-            console.log('ผู้ใช้ต้องการติดต่อแอดมิน:', data);
-            showNotification(`ผู้ใช้ ${data.userInfo?.name || 'ไม่ระบุชื่อ'} ต้องการติดต่อแอดมิน`);
-            loadConversations();
-        });
+                if (roomId === adminState.currentSessionId) {
+                    addMessageToChat(data);
+                } else {
+                    if (data.sender === 'user') {
+                        showNotification(`มีข้อความใหม่จากผู้ใช้ในห้อง ${roomId}`);
+                    }
+                }
+            });
 
-        // รับการแจ้งเตือนการเปลี่ยนสถานะแอดมิน
-        adminState.socket.on('admin_status_change', (data) => {
-            console.log('การเปลี่ยนสถานะแอดมิน:', data);
+            // รับการแจ้งเตือนเมื่อมีผู้ใช้ต้องการติดต่อแอดมิน
+            channel.listen('user_request_agent', (data) => {
+                console.log('ผู้ใช้ต้องการติดต่อแอดมิน:', data);
+                showNotification(`ผู้ใช้ ${data.userInfo?.name || 'ไม่ระบุชื่อ'} ต้องการติดต่อแอดมิน`);
+                loadConversations();
+            });
 
-            if (data.room === adminState.currentSessionId) {
-                adminState.adminActive = data.adminActive;
-                updateAdminStatusBtn();
-            }
+            // รับการแจ้งเตือนการเปลี่ยนสถานะแอดมิน
+            channel.listen('admin_status_change', (data) => {
+                console.log('การเปลี่ยนสถานะแอดมิน:', data);
+
+                const roomId = data.room || data.sessionId;
+                if (roomId === adminState.currentSessionId) {
+                    adminState.adminActive = data.adminActive;
+                    updateAdminStatusBtn();
+                }
+            });
+
+        }).catch((error) => {
+            console.error('เกิดข้อผิดพลาดในการเชื่อมต่อ PieSocket:', error);
+            return false;
         });
 
         return true;
     } catch (error) {
-        console.error('เกิดข้อผิดพลาดในการเชื่อมต่อ Socket.IO:', error);
+        console.error('เกิดข้อผิดพลาดในการเชื่อมต่อ PieSocket:', error);
         return false;
     }
 }
@@ -1409,8 +1399,6 @@ function openChatSession(sessionId) {
   adminState.adminActive = true;
   updateAdminStatusBtn();
 
-  // ส่งสถานะแอดมินผ่าน Socket.IO
-
   if (adminState.adminChannel) {
             adminState.adminChannel.publish('admin_status_change', {
                 type: 'admin_status_change',
@@ -1418,7 +1406,9 @@ function openChatSession(sessionId) {
                 timestamp: Date.now(),
                 room: adminState.currentSessionId,
                 adminId: adminState.adminInfo.id,
-                adminName: adminState.adminInfo.name
+                adminName: adminState.adminInfo.name,
+                sessionId: adminState.currentSessionId, // เพิ่ม sessionId
+                platform: 'ownweb'
             });
         }
 
@@ -1492,11 +1482,14 @@ function openChatSession(sessionId) {
     elements.adminChatMessages.innerHTML = '<div style="text-align:center;padding:20px;color:red;">เกิดข้อผิดพลาดในการโหลดข้อมูล</div>';
   });
 
-  // เข้าร่วมห้องแชท (ใช้ Socket.IO)
-  if (adminState.socket) {
-    console.log('เข้าร่วมห้อง:', sessionId);
-    adminState.socket.emit('join', sessionId);
-  }
+  if (adminState.adminChannel) {
+        console.log('เข้าร่วมห้อง:', sessionId);
+        adminState.adminChannel.publish('join', {
+        room: sessionId,
+        sessionId: adminState.currentSessionId, // เพิ่ม sessionId
+        platform: 'ownweb'
+        });
+    }
 }
 
 
@@ -1751,7 +1744,9 @@ function closeChatPanel() {
                 timestamp: Date.now(),
                 room: adminState.currentSessionId,
                 adminId: adminState.adminInfo.id,
-                adminName: adminState.adminInfo.name
+                adminName: adminState.adminInfo.name,
+                sessionId: adminState.currentSessionId, // เพิ่ม sessionId
+                platform: 'ownweb'
             });
         }
 
@@ -1761,8 +1756,12 @@ function closeChatPanel() {
     // *** สิ้นสุดส่วนที่เพิ่ม ***
 
     // ออกจากห้องแชท
-    if (adminState.currentSessionId && adminState.socket) {
-        adminState.socket.emit('leave', adminState.currentSessionId);
+    if (adminState.currentSessionId && adminState.adminChannel) {
+        adminState.adminChannel.publish('leave', {
+                room: adminState.currentSessionId,
+                sessionId: adminState.currentSessionId, // เพิ่ม sessionId
+                platform: 'ownweb',
+                });
         console.log('ออกจากห้อง:', adminState.currentSessionId);
     }
 
@@ -1781,20 +1780,21 @@ function handlePageUnload() {
     isUnloading = true;
 
     // ถ้ามีการเปิดแชทและแอดมินกำลัง active อยู่
-    if (adminState.currentSessionId && adminState.adminActive && adminState.socket) {
-        console.log('Admin ออกจากระบบ - ปิด active status');
 
-            adminState.adminChannel.publish('admin_status_change', {
-                type: 'admin_status_change',
-                adminActive: false,
-                timestamp: Date.now(),
-                room: adminState.currentSessionId,
-                adminId: adminState.adminInfo.id,
-                adminName: adminState.adminInfo.name
-            });
-
-        // ออกจากห้องแชท
-        adminState.socket.emit('leave', adminState.currentSessionId);
+    if (adminState.currentSessionId && adminState.adminActive && adminState.adminChannel) {
+        adminState.adminChannel.publish('admin_status_change', {
+            type: 'admin_status_change',
+            adminActive: false,
+            timestamp: Date.now(),
+            room: adminState.currentSessionId,
+            adminId: adminState.adminInfo.id,
+            adminName: adminState.adminInfo.name,
+                sessionId: adminState.currentSessionId, // เพิ่ม sessionId
+                platform: 'ownweb',
+        });
+        adminState.adminChannel.publish('leave', { room: adminState.currentSessionId,
+                sessionId: adminState.currentSessionId, // เพิ่ม sessionId
+                platform: 'ownweb',  });
     }
 
     // รีเซ็ตตัวแปรหลังจาก 1 วินาที (กรณีที่ไม่ได้ปิดหน้าจริงๆ)
@@ -1874,7 +1874,6 @@ function sendAdminMessage() {
     showNotification('เกิดข้อผิดพลาดในการส่งข้อความ', 'error');
   });
 
-  // ส่งข้อความผ่าน Socket.IO ด้วย (ถ้าต้องการ)
 
   if (adminState.adminChannel) {
     adminState.adminChannel.publish('new_message', {
@@ -1883,7 +1882,9 @@ function sendAdminMessage() {
         adminId: adminState.adminInfo.id,
         adminName: adminState.adminInfo.name,
         timestamp: timestamp,
-        room: adminState.currentSessionId
+        room: adminState.currentSessionId,
+                sessionId: adminState.currentSessionId, // เพิ่ม sessionId
+                platform: 'ownweb',
     });
 }
 
@@ -1900,7 +1901,6 @@ function toggleAdminStatus() {
     adminState.adminActive = !adminState.adminActive;
     updateAdminStatusBtn();
 
-    // ส่งการเปลี่ยนสถานะไปยัง Socket.IO
     if (adminState.adminChannel) {
             adminState.adminChannel.publish('admin_status_change', {
                 type: 'admin_status_change',
@@ -1908,7 +1908,9 @@ function toggleAdminStatus() {
                 timestamp: Date.now(),
                 room: adminState.currentSessionId,
                 adminId: adminState.adminInfo.id,
-                adminName: adminState.adminInfo.name
+                adminName: adminState.adminInfo.name,
+                sessionId: adminState.currentSessionId, // เพิ่ม sessionId
+                platform: 'ownweb',
             });
         }
 
@@ -2067,7 +2069,6 @@ function init() {
     // *** เพิ่ม Event Listener สำหรับการโหลดหน้าใหม่ ***
     window.addEventListener('load', handlePageLoad);
 
-    // เชื่อมต่อ Socket.IO
     connectSocket();
 
     // ตั้งค่า event listeners
@@ -2155,7 +2156,7 @@ function init() {
 // เริ่มทำงานเมื่อโหลดหน้าเสร็จ
 document.addEventListener('DOMContentLoaded', init);
 </script>
-    <script>
+<script>
         // เพิ่มสถานะการเรียงลำดับ
         const sortState = {
             column: 'lastActivity', // คอลัมน์เริ่มต้น
@@ -2395,5 +2396,7 @@ document.addEventListener('DOMContentLoaded', init);
 
         }
     </script>
+<script src="env-config.js"></script>
+
 </body>
 </html>

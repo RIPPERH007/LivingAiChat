@@ -1,3 +1,4 @@
+
 /**
  * chat.js - ระบบ Live Chat แบบครบวงจร
  * รวมฟังก์ชันการทำงานจาก server.js มาไว้ในไฟล์เดียว
@@ -28,8 +29,8 @@
         socket: null,
         adminActive: false,
         lastMessageSender: null,
-        apiBaseUrl: 'https://ownwebdev1.livinginsider.com/api/v1', // Base URL สำหรับ API
-        apiToken: 'b059a15197926350fb43271477779d0fc04f6a4701eb3367c999c59eeae1f890', // Bearer Token
+        apiBaseUrl: window.env.BASE_API_URL, // เพิ่ม Base URL สำหรับ API
+        apiToken: window.env.TOKEN_API, // เพิ่ม Bearer Token
         propertySearch: {
             post_type: null, // ประเภทธุรกรรม (เช่า/ซื้อ)
             building_type: null,    // ประเภทอสังหาริมทรัพย์
@@ -208,7 +209,6 @@
 
        return false;
    }
-    // เชื่อมต่อกับ Socket.IO
     function connectSocket() {
         // ตรวจสอบว่า PieSocket ถูกโหลดแล้วหรือไม่
         if (typeof PieSocket === 'undefined') {
@@ -219,6 +219,7 @@
         try {
             const clusterId = 's8661.sgp1';
             const apiKey = 'mOGIGJTyKOmsesgjpchKEECKLekVGmuCSwNv2wpl';
+            const jwtToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwdWJsaWMtY2hhbm5lbC1vd253ZWItZGV2ZWxvcG1lbnQiLCJwbGF0Zm9ybSI6Im93bndlYiIsImlhdCI6MTc0NzkwMDg0MSwiZXhwIjoyMDYzMjYwODQxfQ.-QO3q_RExUV9NjOMpPuJXqnisGaH1934nN8xvlDJgZU';
 
             // ตรวจสอบว่ามีการเชื่อมต่ออยู่แล้วหรือไม่
             if (chatState.socket && chatState.currentChannel) {
@@ -230,13 +231,18 @@
             chatState.socket = new PieSocket({
                 clusterId: clusterId,
                 apiKey: apiKey,
-                notifySelf: 1
+                notifySelf: 1,
+                forceAuth: true,
+                jwt: jwtToken
             });
 
-            // Subscribe ไปยัง channel
-            const channelName = `chat-${chatState.sessionId}`;
+            // กำหนด channel name ตาม pattern ใหม่
+            const environment = 'development'; // หรือ 'production' ตาม NODE_ENV
+            const channelName = `public-channel-ownweb-${environment}`;
 
-            chatState.socket.subscribe(channelName).then((channel) => {
+            chatState.socket.subscribe(channelName, {
+                platform: 'ownweb'
+            }).then((channel) => {
                 console.log('Connected to PieSocket with channel:', channelName);
                 chatState.currentChannel = channel;
 
@@ -460,13 +466,9 @@
                 console.error('ไม่พบปุ่มแชท (chatToggleBtn)');
             }
 
-            // เชื่อมต่อ Socket.IO หากจำเป็น
             if (!chatState.socket) {
-                console.log('เชื่อมต่อ Socket.IO');
+                console.log('เชื่อมต่อ Pie.Socket');
                 connectSocket();
-            } else if (chatState.socket && chatState.socket.disconnected) {
-                console.log('เชื่อมต่อ Socket.IO ใหม่');
-                chatState.socket.connect();
             }
         } else {
             console.log('กำลังปิดหน้าต่างแชท...');
@@ -746,10 +748,8 @@
     // เลื่อนไปที่ข้อความล่าสุด
     scrollToBottom();
 
-    // ส่งข้อความผ่าน Socket.IO ทั้งฝั่ง user และ bot
     if ((sender === 'user' || sender === 'bot') && chatState.socket && chatState.socket.connected &&
         !messageElement.hasAttribute('from-socket')) {
-        // เพิ่ม attribute เพื่อระบุว่าเป็นข้อความที่ส่งผ่าน Socket.IO แล้ว
         messageElement.setAttribute('from-socket', 'true');
 
         // ไม่ต้องส่งซ้ำถ้าข้อความนี้อยู่ใน chat cache แล้ว
@@ -781,8 +781,15 @@
 
             // ส่งข้อมูลผ่าน socket
             if (chatState.currentChannel) {
-                chatState.currentChannel.publish('new_message', socketData);
-                console.log(`ส่งข้อความ ${sender} ผ่าน PieSocket:`, socketData);
+                // เพิ่มข้อมูล sessionId และ platform
+                const messageData = {
+                    ...socketData,
+                    sessionId: chatState.sessionId,
+                    platform: 'ownweb'
+                };
+
+                chatState.currentChannel.publish('new_message', messageData);
+                console.log(`ส่งข้อความ ${sender} ผ่าน PieSocket:`, messageData);
             }
             console.log(`ส่งข้อความ ${sender} ${options ? 'ที่มี chips' : ''} ${richContent ? 'ที่มี rich content' : ''} ผ่าน socket:`, socketData);
         }
@@ -3367,11 +3374,10 @@ async function contactAdmin() {
             resetInitialState();
         }
 
-        // เชื่อมต่อกับ Socket.IO หากจำเป็น
-        if (typeof io !== 'undefined') {
+        if (typeof PieSocket !== 'undefined') {
             connectSocket();
         } else {
-            console.log('Socket.IO library not available, will attempt to connect when chat is opened');
+            console.log('PieSocket library not available');
         }
 
         // ตั้งค่าบันทึกข้อมูลแชทก่อนรีเฟรชหน้า
