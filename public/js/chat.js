@@ -32,10 +32,13 @@
         apiBaseUrl: window.env.BASE_API_URL, // เพิ่ม Base URL สำหรับ API
         apiToken: window.env.TOKEN_API, // เพิ่ม Bearer Token
         settings: {
-                botName: 'แอดมิน',
+                botName: 'บอท',
                 botImage: 'assets/icons/chat-avatar.jpg',
+                adminName: 'แอดมินโอม',
+                adminImage: 'assets/icons/chat-avatar.jpg',
                 greetingDetail: '👋 สวัสดีค่ะ ฉันคือผู้ช่วยอัจฉริยะของ My Property พร้อมช่วยคุณค้นหา ซื้อ ขาย หรือเช่าอสังหาฯ แบบง่าย ๆ สนใจเรื่องไหน ถามกับฉันได้เลย!'
             },
+        isContactFormActive: false,
         propertySearch: {
             post_type: null, // ประเภทธุรกรรม (เช่า/ซื้อ)
             building_type: null,    // ประเภทอสังหาริมทรัพย์
@@ -55,6 +58,7 @@
         },
         isSending : false,
     };
+
 
     // การลงทะเบียนตัวจัดการเหตุการณ์
     function setupEventListeners() {
@@ -324,7 +328,7 @@
                  // เมื่อมีข้อความใหม่
                  channel.listen('new_message', (message) => {
                      console.log('=== CLIENT RECEIVED MESSAGE ===');
-                     console.log('Message data:', message);
+                     console.log('Message data:1', message);
                      console.log('Target room:', message.room);
                      console.log('Current session:', chatState.sessionId);
 
@@ -342,22 +346,31 @@
 
                      // แสดงข้อความตามประเภท
                      if (message.sender === 'admin') {
-                         const messageElement = document.createElement('div');
-                         messageElement.className = 'message bot-message';
-                         messageElement.setAttribute('data-message-id', message.timestamp);
-                         messageElement.innerHTML = `
-                             <div class="message-avatar">
-                                 <img src="${chatState.settings.botImage}" alt="${chatState.settings.botName}">
-                             </div>
-                             <div class="message-content admin-message">
-                                 <p>${escapeHTML(message.text)}</p>
-                                 <small>${escapeHTML(message.botName || chatState.settings.botName)}</small>
-                             </div>
-                         `;
 
-                         elements.chatMessages.appendChild(messageElement);
-                         scrollToBottom();
-                         saveChatToLocalStorage();
+                             if (message.adminName) {
+                                 chatState.settings.adminName = message.adminName;
+                             }
+                             if (message.adminImage) {
+                                 chatState.settings.adminImage = message.adminImage;
+                             }
+
+
+                         const messageElement = document.createElement('div');
+                                 messageElement.className = 'message bot-message';
+                                 messageElement.setAttribute('data-message-id', message.timestamp);
+                                 messageElement.innerHTML = `
+                                     <div class="message-avatar">
+                                         <img src="${message.adminImage || chatState.settings.adminImage}" alt="${message.adminName || chatState.settings.adminName}">
+                                     </div>
+                                     <div class="message-content admin-message">
+                                         <p>${escapeHTML(message.text)}</p>
+                                         <small>${escapeHTML(message.adminName || chatState.settings.adminName)}</small>
+                                     </div>
+                                 `;
+
+                                 elements.chatMessages.appendChild(messageElement);
+                                 scrollToBottom();
+                                 saveChatToLocalStorage();
                      }
                      else if (message.sender === 'system') {
                          addSystemMessage(message.text);
@@ -368,15 +381,30 @@
                  channel.listen('admin_status_change', (data) => {
                      console.log('Admin status changed:', data);
 
-                        if (data.room !== chatState.sessionId && data.sessionId !== chatState.sessionId) {
-                            console.log("Status change not for this user, ignoring.");
-                            return;
-                        }
+                     if (data.room !== chatState.sessionId && data.sessionId !== chatState.sessionId) {
+                         console.log("Status change not for this user, ignoring.");
+                         return;
+                     }
+
                      chatState.adminActive = data.adminActive;
-                     updateAdminStatusDisplay(data.adminActive, chatState.settings.botName);
+
+                     // เพิ่มการอัปเดต adminName และ adminImage
+                     if (data.adminName) {
+                         chatState.settings.adminName = data.adminName;
+                     }
+                     if (data.adminImage) {
+                         chatState.settings.adminImage = data.adminImage;
+                     }
+                     if (data.adminName || data.adminImage) {
+                         updateAdminAvatars();
+                     }
+
+                     // อัปเดตการแสดงผลด้วยข้อมูลใหม่
+                     updateAdminStatusDisplay(data.adminActive, data.adminName || chatState.settings.adminName);
 
                      if (data.adminActive) {
-                         const message = `${chatState.settings.botName || 'แอดมิน'}กำลังให้บริการคุณอยู่`;
+                         enableChatInput();
+                         const message = `${data.adminName || chatState.settings.adminName || 'แอดมิน'} กำลังให้บริการคุณอยู่`;
                          addSystemMessage(message);
                      } else {
                          const message = `${chatState.settings.botName || 'บอท'}กลับมาให้บริการแล้ว`;
@@ -418,77 +446,6 @@
          }
      }
 
-    // แสดงประวัติการสนทนา
-    function displayChatHistory(messages) {
-        if (!messages || messages.length === 0) {
-            return;
-        }
-
-        // เรียงข้อความจากเก่าไปใหม่
-        const sortedMessages = [...messages].sort((a, b) => {
-            return (a.timestamp || a.create_date || 0) - (b.timestamp || b.create_date || 0);
-        });
-
-        // ล้างข้อความเดิมถ้าต้องการ (อาจไม่จำเป็นถ้าเราต้องการเก็บข้อความปัจจุบัน)
-        // elements.chatMessages.innerHTML = '';
-
-        // แสดงข้อความในประวัติ
-        sortedMessages.forEach(msg => {
-            const timestamp = msg.timestamp || msg.create_date || Date.now();
-
-            // ข้ามข้อความที่มีอยู่แล้ว
-            if (isMessageDuplicate(timestamp)) {
-                return;
-            }
-
-            if (msg.sender === 'bot') {
-                // ตรวจสอบว่ามี payload หรือไม่
-                if (msg.payload) {
-                    const richContentHtml = processRichContent(msg.payload);
-
-                    if (richContentHtml) {
-                        const messageElement = document.createElement('div');
-                        messageElement.className = 'message bot-message';
-                        messageElement.setAttribute('data-message-id', timestamp);
-                        messageElement.innerHTML = `
-                            <div class="message-avatar">
-                                <img src="assets/icons/chat-avatar.jpg" alt="Bot">
-                            </div>
-                            <div class="message-content">
-                                <p>${escapeHTML(msg.text || msg.message || '')}</p>
-                                <div class="rich-content-container">${richContentHtml}</div>
-                            </div>
-                        `;
-                        elements.chatMessages.appendChild(messageElement);
-                        addInteractiveListeners(messageElement);
-                    } else {
-                        addMessage('bot', msg.text || msg.message || '', '', timestamp);
-                    }
-                } else {
-                    addMessage('bot', msg.text || msg.message || '', '', timestamp);
-                }
-            } else if (msg.sender === 'admin') {
-                const messageElement = document.createElement('div');
-                messageElement.className = 'message bot-message';
-                messageElement.setAttribute('data-message-id', timestamp);
-                messageElement.innerHTML = `
-                    <div class="message-avatar">
-                        <img src="assets/icons/chat-avatar.jpg" alt="Admin">
-                    </div>
-                    <div class="message-content admin-message">
-                        <p>${escapeHTML(msg.text || msg.message || '')}</p>
-                        <small>${escapeHTML(msg.botName || 'Admin')}</small>
-                    </div>
-                `;
-                elements.chatMessages.appendChild(messageElement);
-            } else if (msg.sender === 'system') {
-                addSystemMessage(msg.text || msg.message || '');
-            }
-        });
-
-        // เลื่อนไปที่ข้อความล่าสุด
-        scrollToBottom();
-    }
 
     function setupAdminStatusIndicator() {
         elements.adminStatusIndicator.className = 'admin-status-indicator';
@@ -612,67 +569,69 @@
             return;
         }
 
-        const clickText = chipElement.dataset.text;
-        if (!clickText) return;
+        if (chatState.isContactFormActive === false) {
 
-        // ตรวจสอบว่าเป็น chip เดิมที่คลิกซ้ำในเวลาใกล้เคียงหรือไม่
-        if (lastProcessedChip && lastProcessedChip === chipElement) {
-            const now = Date.now();
-            if (now - lastChipClickTime < 2000) { // 2 วินาที
-                console.log('คลิก chip ซ้ำเร็วเกินไป ข้ามการทำงาน');
-                return;
+            const clickText = chipElement.dataset.text;
+            if (!clickText) return;
+
+            // ตรวจสอบว่าเป็น chip เดิมที่คลิกซ้ำในเวลาใกล้เคียงหรือไม่
+            if (lastProcessedChip && lastProcessedChip === chipElement) {
+                const now = Date.now();
+                if (now - lastChipClickTime < 2000) { // 2 วินาที
+                    console.log('คลิก chip ซ้ำเร็วเกินไป ข้ามการทำงาน');
+                    return;
+                }
             }
-        }
 
-        // กำหนดให้กำลังประมวลผล
-        isChipProcessing = true;
-        lastProcessedChip = chipElement;
-        lastChipClickTime = Date.now();
+            // กำหนดให้กำลังประมวลผล
+            isChipProcessing = true;
+            lastProcessedChip = chipElement;
+            lastChipClickTime = Date.now();
 
-        // ปิดการใช้งาน chip ชั่วคราว
-        const allChips = document.querySelectorAll('.chip');
-        allChips.forEach(chip => {
-            chip.style.pointerEvents = 'none';
-            chip.style.opacity = '0.6';
-        });
+            // ปิดการใช้งาน chip ชั่วคราว
+            const allChips = document.querySelectorAll('.chip');
+            allChips.forEach(chip => {
+                chip.style.pointerEvents = 'none';
+                chip.style.opacity = '0.6';
+            });
 
-        // กระบวนการส่งข้อความเมื่อคลิก chip
-        const messageId = Date.now();
+            // กระบวนการส่งข้อความเมื่อคลิก chip
+            const messageId = Date.now();
 
-        // แสดงข้อความผู้ใช้
-        addMessage('user', clickText, '', messageId);
+            // แสดงข้อความผู้ใช้
+            addMessage('user', clickText, '', messageId);
 
-        // ส่งข้อความไปยัง API
-        sendToApi(clickText, messageId);
+            // ส่งข้อความไปยัง API
+            sendToApi(clickText, messageId);
 
-        // ตรวจสอบกรณีพิเศษ: ปุ่มค้นหา
-        if (clickText === 'ค้นหาเลย' || clickText === 'ยืนยันการค้นหา' || clickText === 'ค้นหา') {
-            // ตั้งค่าสถานะให้พร้อมค้นหา
-            chatState.propertySearch.isComplete = true;
-            chatState.propertySearch.searchReady = true;
+            // ตรวจสอบกรณีพิเศษ: ปุ่มค้นหา
+            if (clickText === 'ค้นหาเลย' || clickText === 'ยืนยันการค้นหา' || clickText === 'ค้นหา') {
+                // ตั้งค่าสถานะให้พร้อมค้นหา
+                chatState.propertySearch.isComplete = true;
+                chatState.propertySearch.searchReady = true;
 
-            // ทำการค้นหาทันที
-            searchProperties();
-        }
-        // ตรวจสอบกรณีพิเศษ: ปุ่มแก้ไขข้อมูล
-        else if (clickText === 'แก้ไขข้อมูล') {
-            // รีเซ็ตกลับไปขั้นตอนแรก
-            resetPropertySearch();
+                // ทำการค้นหาทันที
+                searchProperties();
+            }
+            // ตรวจสอบกรณีพิเศษ: ปุ่มแก้ไขข้อมูล
+            else if (clickText === 'แก้ไขข้อมูล') {
+                // รีเซ็ตกลับไปขั้นตอนแรก
+                resetPropertySearch();
 
-            // แสดงตัวเลือกประเภทธุรกรรม
-            showTransactionTypeOptions();
-        }
-        // กรณีทั่วไป: ประมวลผลตามขั้นตอน
-        else {
-            // ประมวลผลข้อความเพื่อการค้นหาอสังหาริมทรัพย์
-            processPropertySearchMessage(clickText);
-        }
+                // แสดงตัวเลือกประเภทธุรกรรม
+                showTransactionTypeOptions();
+            }
+            // กรณีทั่วไป: ประมวลผลตามขั้นตอน
+            else {
+                // ประมวลผลข้อความเพื่อการค้นหาอสังหาริมทรัพย์
+                processPropertySearchMessage(clickText);
+            }
 
-        // บันทึกข้อมูลลง localStorage
-        saveChatToLocalStorage();
+            // บันทึกข้อมูลลง localStorage
+            saveChatToLocalStorage();
 
-        // รีเซ็ตสถานะการประมวลผลหลังจาก 1.5 วินาที
-        setTimeout(() => {
+            // รีเซ็ตสถานะการประมวลผลหลังจาก 1.5 วินาที
+            setTimeout(() => {
             isChipProcessing = false;
 
             // คืนค่าการใช้งาน chip
@@ -681,6 +640,7 @@
                 chip.style.opacity = '';
             });
         }, 1500);
+        }
     }
 
 
@@ -747,13 +707,44 @@
     function sendMessage() {
         console.log('=== sendMessage() called ===');
 
-        const message = elements.chatInput.value.trim();
-        console.log('Message to send:', message);
+            // ตรวจสอบว่ามีฟอร์มติดต่อที่ยังไม่ได้กรอกหรือไม่
+            if (chatState.isContactFormActive) {
+                console.log('Contact form is active, cannot send message');
+                // แสดงข้อความเตือน
+                const alertMessage = document.createElement('div');
+                alertMessage.className = 'chat-alert';
+                alertMessage.textContent = 'กรุณากรอกข้อมูลติดต่อด้านบนให้ครบถ้วนก่อน';
+                alertMessage.style.cssText = `
+                    position: absolute;
+                    bottom: 70px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    background: rgba(255, 0, 0, 0.9);
+                    color: white;
+                    padding: 10px 20px;
+                    border-radius: 5px;
+                    font-size: 12px;
+                    z-index: 1000;
+                `;
 
-        if (!message || chatState.isSending) {
-            console.log('Message empty or already sending');
-            return;
-        }
+                elements.chatInputArea.appendChild(alertMessage);
+
+                // ลบข้อความเตือนหลัง 3 วินาที
+                setTimeout(() => {
+                    alertMessage.remove();
+                }, 3000);
+
+                return;
+            }
+
+            // โค้ดเดิมของ sendMessage
+            const message = elements.chatInput.value.trim();
+            console.log('Message to send:', message);
+
+            if (!message || chatState.isSending) {
+                console.log('Message empty or already sending');
+                return;
+            }
 
         try {
             console.log('Processing message...');
@@ -928,11 +919,17 @@
                 const messageData = {
                     type: isBotMessage ? 'bot' : (isUserMessage ? 'user' : 'system'),
                     text: messageText || '',
-                    chipsHTML: chipsHTML || '',  // เก็บ HTML ของ chips
-                    richContentHTML: richContentHTML || '',  // เก็บ HTML ของ rich content
+                    chipsHTML: chipsHTML || '',
+                    richContentHTML: richContentHTML || '',
                     timestamp: timestamp,
-                    hasChips: !!chipsContainer, // เก็บสถานะว่ามี chips หรือไม่
-                    sentToApi: sentMessages[timestamp] === true // เก็บสถานะว่าส่งไป API แล้วหรือไม่ (ดึงจากข้อมูลที่บันทึกไว้)
+                    hasChips: !!chipsContainer,
+                    sentToApi: sentMessages[timestamp] === true,
+                    // เพิ่มข้อมูลแอดมิน
+                    adminName: isBotMessage && msg.querySelector('.admin-message small') ?
+                        msg.querySelector('.admin-message small').textContent : null,
+                    adminImage: isBotMessage && msg.querySelector('.message-avatar img') ?
+                        msg.querySelector('.message-avatar img').src : null,
+                    isAdminMessage: !!msg.querySelector('.admin-message')
                 };
 
                 // เก็บข้อมูล chips (ถ้ามี)
@@ -1204,10 +1201,28 @@
         // อัปเดตชื่อใน header
         const headerTitle = document.querySelector('.chat-title h3');
         if (headerTitle) {
-            headerTitle.textContent = `${chatState.settings.botName} ChatBot`;
+            headerTitle.textContent = `${chatState.settings.botName}`;
         }
 
         console.log('อัปเดต avatar และชื่อในแชทเรียบร้อย');
+    }
+    function updateAdminAvatars() {
+        // อัปเดต avatar ของแอดมินในข้อความที่มีอยู่แล้ว
+        const adminMessages = document.querySelectorAll('.message-content.admin-message');
+        adminMessages.forEach(msg => {
+            const avatar = msg.closest('.message').querySelector('.message-avatar img');
+            if (avatar) {
+                avatar.src = chatState.settings.adminImage;
+                avatar.alt = chatState.settings.adminName;
+            }
+
+            const nameLabel = msg.querySelector('small');
+            if (nameLabel) {
+                nameLabel.textContent = chatState.settings.adminName;
+            }
+        });
+
+        console.log('อัปเดต avatar และชื่อแอดมินในแชทเรียบร้อย');
     }
 
     function isMessageDuplicateByContent(type, content) {
@@ -1263,7 +1278,21 @@
         addMessage('bot', greetingText, '', null, chipsItem.options);
     }
 
+
     function showContactFormMessage() {
+        // Disable chat input ทันทีเมื่อแสดง contact form
+//        if (elements.chatInput) {
+//            elements.chatInput.disabled = true;
+//            elements.chatInput.placeholder = "กรุณากรอกข้อมูลติดต่อด้านบนก่อน...";
+//        }
+//        if (elements.chatSendBtn) {
+//            elements.chatSendBtn.disabled = true;
+//            elements.chatSendBtn.style.opacity = "0.5";
+//            elements.chatSendBtn.style.cursor = "not-allowed";
+//        }
+
+        disableChatInput();
+
         const messageId = Date.now();
         const messageElement = document.createElement('div');
         messageElement.className = 'message bot-message';
@@ -1271,27 +1300,30 @@
 
         messageElement.innerHTML = `
             <div class="message-avatar">
-                <img src="assets/icons/chat-avatar.jpg" alt="Bot">
+                <img src="${chatState.settings.botImage}" alt="${chatState.settings.botName}">
             </div>
             <div class="message-content contact-form-content">
                 <p>🙏 ขออภัย ฉันไม่สามารถตอบคำถามดังกล่าวได้ในขณะนี้ หากคุณต้องการให้ตัวแทนติดต่อกลับ โปรดฝากข้อมูลติดต่อของคุณไว้ และทีมงานของเราจะติดต่อกลับหาคุณโดยเร็วที่สุด</p>
 
-                <form class="contact-form">
-                    <label>เบอร์ <span style="color: red;">*</span></label>
-                    <input type="tel" name="tel" required placeholder="088-888-8888" />
+                <form class="contact-form" id="contactForm-${messageId}">
+                    <label>ชื่อ <span style="color: red;">*</span></label>
+                    <input type="text" name="name" required placeholder="ชื่อ-นามสกุล" />
 
-                    <label>อีเมล</label>
-                    <input type="email" name="email" placeholder="example@myproperty.com" />
+                    <label>เบอร์ <span style="color: red;">*</span></label>
+                    <input type="tel" name="phone" required placeholder="088-888-8888" />
+
+                    <label>อีเมล <span style="color: red;">*</span></label>
+                    <input type="email" name="email" required placeholder="example@myproperty.com" />
 
                     <label>เวลาที่ต้องการ</label>
-                    <select name="preferredTime">
-                        <option>เวลาใดก็ได้</option>
-                        <option>ช่วงเช้า(09.00-12.00)</option>
-                        <option>ช่วงบ่าย(13.00-15.00)</option>
-                        <option>ช่วงเย็น(16.00-18.00)</option>
+                    <select name="time">
+                        <option value="0">เวลาใดก็ได้</option>
+                        <option value="1">ช่วงเช้า(09.00-12.00)</option>
+                        <option value="2">ช่วงบ่าย(13.00-15.00)</option>
+                        <option value="3">ช่วงเย็น(16.00-18.00)</option>
                     </select>
 
-                    <button type="submit" class="send-button">ส่งข้อมูลติดต่อ</button>
+                    <button type="submit" class="send-button" id="submitBtn-${messageId}">ส่งข้อมูลติดต่อ</button>
                 </form>
             </div>
         `;
@@ -1302,25 +1334,139 @@
         // เพิ่มการ scroll ลงล่าง
         scrollToBottom();
 
-        // เพิ่ม event handler ถ้าต้องการ submit form
+        // เพิ่ม event handler สำหรับ submit form
         const form = messageElement.querySelector('.contact-form');
-        form.addEventListener('submit', (event) => {
+        form.addEventListener('submit', async (event) => {
             event.preventDefault();
 
-            const tel = form.tel.value.trim();
+            // ดึงข้อมูลจากฟอร์ม
+            const name = form.name.value.trim();
+            const phone = form.phone.value.trim();
             const email = form.email.value.trim();
-            const preferredTime = form.preferredTime.value;
+            const time = form.time.value;
 
-            if (!tel) {
-                alert("กรุณากรอกเบอร์โทรศัพท์");
+            // Validate ข้อมูล
+            if (!name || !phone || !email) {
+                alert("กรุณากรอกข้อมูลให้ครบถ้วน");
                 return;
             }
 
-            console.log("🟢 ส่งข้อมูลติดต่อ:", { tel, email, preferredTime });
+            // Disable submit button ขณะส่งข้อมูล
+            const submitBtn = document.getElementById(`submitBtn-${messageId}`);
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> กำลังส่ง...';
 
-            form.innerHTML = `<p style="color:green;">✅ ขอบคุณค่ะ! เจ้าหน้าที่จะติดต่อคุณโดยเร็วที่สุด</p>`;
+            try {
+                // ส่งข้อมูลไปยัง API
+                const response = await sendContactFormToAPI({
+                    web_id: chatState.webId,
+                    room_id: chatState.sessionId,
+                    name: name,
+                    email: email,
+                    phone: phone,
+                    time: time
+                });
+
+                if (response.success) {
+                    // แสดงข้อความสำเร็จ
+                    form.innerHTML = `<p style="color:green; text-align: center; padding: 20px;">✅ ขอบคุณค่ะ! เจ้าหน้าที่จะติดต่อคุณโดยเร็วที่สุด</p>`;
+
+                    // เพิ่มข้อความแจ้งเตือนในแชท
+                    addMessage('bot', 'ข้อมูลของคุณถูกส่งเรียบร้อยแล้ว เจ้าหน้าที่จะติดต่อกลับในเร็วๆ นี้');
+
+                    // Enable chat input กลับ
+                    enableChatInput();
+
+                } else {
+                    throw new Error(response.message || 'เกิดข้อผิดพลาดในการส่งข้อมูล');
+                }
+
+            } catch (error) {
+                console.error('Error submitting contact form:', error);
+
+                // แสดงข้อความ error
+                alert('เกิดข้อผิดพลาดในการส่งข้อมูล กรุณาลองอีกครั้ง');
+
+                // Enable submit button กลับ
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = 'ส่งข้อมูลติดต่อ';
+            }
         });
     }
+
+    async function sendContactFormToAPI(contactData) {
+        try {
+            const formData = new FormData();
+            formData.append('web_id', contactData.web_id);
+            formData.append('room_id', contactData.room_id);
+            formData.append('name', contactData.name);
+            formData.append('email', contactData.email);
+            formData.append('phone', contactData.phone);
+            formData.append('time', contactData.time);
+
+            const response = await fetch(`${chatState.apiBaseUrl}/chat/contact`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${chatState.apiToken}`
+                },
+                body: formData
+            });
+
+            const data = await response.json();
+            console.log('Contact form response:', data);
+
+            // ตรวจสอบ response
+            if (data.result_code === 1 || data.status === "success") {
+                return {
+                    success: true,
+                    data: data
+                };
+            } else {
+                return {
+                    success: false,
+                    message: data.message || 'ไม่สามารถส่งข้อมูลได้'
+                };
+            }
+
+        } catch (error) {
+            console.error('Error sending contact form:', error);
+            return {
+                success: false,
+                message: 'เกิดข้อผิดพลาดในการเชื่อมต่อ'
+            };
+        }
+    }
+
+    function disableChatInput() {
+        if (elements.chatInput) {
+            elements.chatInput.disabled = true;
+            elements.chatInput.placeholder = "กรุณากรอกข้อมูลติดต่อด้านบนก่อน...";
+        }
+        if (elements.chatSendBtn) {
+            elements.chatSendBtn.disabled = true;
+            elements.chatSendBtn.style.opacity = "0.5";
+            elements.chatSendBtn.style.cursor = "not-allowed";
+        }
+
+
+        chatState.isContactFormActive = true;
+    }
+
+    function enableChatInput() {
+        if (elements.chatInput) {
+            elements.chatInput.disabled = false;
+            elements.chatInput.placeholder = "พิมพ์ข้อความของคุณ...";
+        }
+        if (elements.chatSendBtn) {
+            elements.chatSendBtn.disabled = false;
+            elements.chatSendBtn.style.opacity = "1";
+            elements.chatSendBtn.style.cursor = "pointer";
+        }
+
+        // รีเซ็ตสถานะ
+        chatState.isContactFormActive = false;
+    }
+
     function showTransactionTypeOptions() {
         if (!shouldBotRespond()) {
                 console.log('แอดมินกำลังเปิดใช้งานอยู่ บอทจะไม่แสดงตัวเลือกประเภทธุรกรรม');
@@ -1331,7 +1477,7 @@
             options: [
                 { text: 'ต้องการซื้อ' },
                 { text: 'ต้องการเช่า' },
-                { text: 'ต้องการขาย' }
+                { text: 'ติดต่อเจ้าหน้าที่' }
             ]
         };
 
@@ -2111,9 +2257,8 @@
                 return;
             }
 
-            if (lowerMessage.includes('ติดต่อเจ้าหน้าที่')) {
+            if (lowerMessage.includes('ติดต่อเจ้าหน้าที่') || lowerMessage.includes('เจ้าหน้าที่') || lowerMessage.includes('แอดมิน')) {
                 contactAdmin();
-                showContactFormMessage();
 
                 return;
             }
@@ -2247,51 +2392,41 @@
 
     // ฟังก์ชันติดต่อเจ้าหน้าที่ (Call Center)
     async function contactAdmin() {
-    try {
+        try {
+            console.log('ผู้ใช้ต้องการติดต่อเจ้าหน้าที่');
 
+            // แสดงข้อความกำลังดำเนินการ
+            addMessage('bot', 'กำลังติดต่อเจ้าหน้าที่ให้คุณ กรุณารอสักครู่...');
 
+            // เรียก API เพื่อแจ้งเจ้าหน้าที่
+            const response = await fetch(`${chatState.apiBaseUrl}/chat/callcenter`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${chatState.apiToken}`,
+                },
+            });
 
-        console.log('ผู้ใช้ต้องการติดต่อเจ้าหน้าที่');
+            const data = await response.json();
+            console.log('ผลการติดต่อเจ้าหน้าที่:', data);
 
-        // แสดงข้อความกำลังดำเนินการ
-        addMessage('bot', 'กำลังติดต่อเจ้าหน้าที่ให้คุณ กรุณารอสักครู่...');
+            // ถ้าติดต่อสำเร็จ
+            if (data.status === "success" || data.result_code === 1) {
+                // แสดงข้อความแจ้งผู้ใช้
+                const successMessage = `ขอบคุณที่ติดต่อเรา เจ้าหน้าที่ของเราจะเข้ามาตอบคำถามของคุณในไม่ช้า
 
-        // เรียก API เพื่อแจ้งเจ้าหน้าที่
-        const response = await fetch(`${chatState.apiBaseUrl}/chat/callcenter`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${chatState.apiToken}`,
-            },
-        });
+    ระหว่างรอการตอบกลับ คุณสามารถแจ้งรายละเอียดเพิ่มเติมหรือคำถามที่สงสัยไว้ล่วงหน้าได้ เพื่อให้เจ้าหน้าที่สามารถช่วยเหลือคุณได้อย่างรวดเร็วและตรงประเด็น`;
 
-        const data = await response.json();
-        console.log('ผลการติดต่อเจ้าหน้าที่:', data);
+                // แสดงข้อความและตัวเลือก
+                addMessage('bot', successMessage, '', null, null);
 
-        // ถ้าติดต่อสำเร็จ
-        if (data.status === "success" || data.result_code === 1) {
-            // แสดงข้อความแจ้งผู้ใช้
-            const successMessage = `ขอบคุณที่ติดต่อเรา เจ้าหน้าที่ของเราจะเข้ามาตอบคำถามของคุณในไม่ช้า
+                // แสดงฟอร์มติดต่อและ disable chat input
+                showContactFormMessage();
 
-ระหว่างรอการตอบกลับ คุณสามารถแจ้งรายละเอียดเพิ่มเติมหรือคำถามที่สงสัยไว้ล่วงหน้าได้ เพื่อให้เจ้าหน้าที่สามารถช่วยเหลือคุณได้อย่างรวดเร็วและตรงประเด็น`;
+                // เพิ่มข้อความระบบแจ้งเตือน
+                addSystemMessage('กำลังเชื่อมต่อกับเจ้าหน้าที่');
 
-            // แสดงข้อความตอบกลับพร้อมตัวเลือก
-            const followUpOptions = {
-                type: 'chips',
-                options: [
-                    { text: 'กลับไปค้นหาอสังหาริมทรัพย์' },
-                    { text: 'ดูรายการอสังหาริมทรัพย์ยอดนิยม' }
-                ]
-            };
-
-            // แสดงข้อความและตัวเลือก
-            addMessage('bot', successMessage, '', null, followUpOptions.options);
-//            showContactFormMessage();
-
-            // เพิ่มข้อความระบบแจ้งเตือน
-            addSystemMessage('กำลังเชื่อมต่อกับเจ้าหน้าที่');
-
-            return true;
-        } else {
+                return true;
+            } else {
             // กรณีติดต่อไม่สำเร็จ
             const errorMessage = 'ขออภัย ระบบไม่สามารถติดต่อเจ้าหน้าที่ได้ในขณะนี้ คุณสามารถลองอีกครั้งในภายหลัง หรือติดต่อเราทางช่องทางอื่นได้ที่ support@myproperty.com หรือโทร 02-XXX-XXXX';
             addMessage('bot', errorMessage);
@@ -2314,6 +2449,7 @@
         // กรณีเกิด error
         const fallbackMessage = 'ขออภัย เกิดข้อผิดพลาดในการติดต่อเจ้าหน้าที่ คุณสามารถลองอีกครั้งในภายหลัง หรือติดต่อเราผ่านช่องทางอื่น';
         addMessage('bot', fallbackMessage);
+        showContactFormMessage();
 
         return false;
     }
@@ -2530,20 +2666,20 @@
                     addMessage('bot', msg.text || msg.message || '', '', timestamp);
                 }
             } else if (msg.sender === 'admin') {
-                const messageElement = document.createElement('div');
-                messageElement.className = 'message bot-message';
-                messageElement.setAttribute('data-message-id', timestamp);
-                messageElement.innerHTML = `
-                    <div class="message-avatar">
-                        <img src="${chatState.settings.botImage}" alt="${chatState.settings.botName}">
-                    </div>
-                    <div class="message-content admin-message">
-                        <p>${escapeHTML(msg.text || msg.message || '')}</p>
-                        <small>${escapeHTML(msg.botName || chatState.settings.botName)}</small>
-                    </div>
-                `;
-                elements.chatMessages.appendChild(messageElement);
-            } else if (msg.sender === 'system') {
+                                     const messageElement = document.createElement('div');
+                                     messageElement.className = 'message bot-message';
+                                     messageElement.setAttribute('data-message-id', timestamp);
+                                     messageElement.innerHTML = `
+                                         <div class="message-avatar">
+                                             <img src="${msg.adminImage || chatState.settings.adminImage}" alt="${msg.adminName || chatState.settings.adminName}">
+                                         </div>
+                                         <div class="message-content admin-message">
+                                             <p>${escapeHTML(msg.text || msg.message || '')}</p>
+                                             <small>${escapeHTML(msg.adminName || chatState.settings.adminName)}</small>
+                                         </div>
+                                     `;
+                                     elements.chatMessages.appendChild(messageElement);
+                                 } else if (msg.sender === 'system') {
                 addSystemMessage(msg.text || msg.message || '');
             }
         });
@@ -2551,6 +2687,159 @@
         // เลื่อนไปที่ข้อความล่าสุด
         scrollToBottom();
     }
+
+    function displayPropertyResults(data) {
+            // ตรวจสอบว่ามีข้อมูลหรือไม่
+            if (!data.data || data.data.length === 0) {
+                console.log('ไม่พบข้อมูลอสังหาริมทรัพย์');
+                return;
+            }
+
+            // แปลงข้อมูลจาก API ให้อยู่ในรูปแบบที่ต้องการแสดงผล
+            const properties = data.data.map((item, index) => {
+                return {
+                    id: item.web_id || `prop-${index}`,
+                    imageUrl: item.web_photo || 'assets/images/property-placeholder.jpg',
+                    title: item.building_name || item.post_name || 'ไม่ระบุชื่อ',
+                    location: item.web_zone_name || 'ไม่ระบุที่ตั้ง',
+                    price: item.price_sort || '-',
+                    tag: item.web_post_type === 1 ? 'ขาย' : 'เช่า',
+                    link: item.web_link || '#',
+                    building: item.building_name || '',
+                    project_name: item.web_project_name || 'ไม่ระบุ'
+                };
+            });
+
+            // สร้างข้อความสรุปการค้นหา
+            let summaryText = 'ผลการค้นหาอสังหาริมทรัพย์';
+            if (chatState.propertySearch.post_type) {
+                summaryText += ` สำหรับ${chatState.propertySearch.post_type}`;
+            }
+            if (chatState.propertySearch.building_type) {
+                summaryText += ` ประเภท${chatState.propertySearch.building_type}`;
+            }
+            if (chatState.propertySearch.keyword) {
+                summaryText += ` บริเวณ${chatState.propertySearch.keyword}`;
+            }
+            if (chatState.propertySearch.price && chatState.propertySearch.price !== '1') {
+                summaryText += ` ในช่วงราคา${chatState.propertySearch.price}`;
+            }
+
+            // ลองดูว่ามี more link หรือไม่
+            const moreLink = data.more && data.more.link ? data.more : null;
+
+            // สร้าง property_list สำหรับแสดงผลใน rich content
+            // แก้ไขตรงนี้เพื่อส่ง moreLink ให้กับ property สุดท้าย
+            const propertyListItems = properties.map((property, index) => {
+                // กำหนดให้มีปุ่ม "ดูเพิ่มเติม" เฉพาะในการ์ดสุดท้าย
+                const showMoreButton = (index === properties.length - 1) ? moreLink : null;
+
+                return {
+                    type: "custom_card",
+                    property_data: property,
+                    more_link: showMoreButton
+                };
+            });
+
+            // สร้าง rich content
+            const richContent = {
+                richContent: [
+                    [
+                        {
+                            type: "info",
+                            title: summaryText,
+                            subtitle: `พบทั้งหมด ${properties.length} รายการ`
+                        },
+                        ...propertyListItems
+                    ]
+                ]
+            };
+
+            // สร้าง message element
+            const messageId = Date.now();
+            const messageElement = document.createElement('div');
+            messageElement.className = 'message bot-message';
+            messageElement.setAttribute('data-message-id', messageId);
+            messageElement.innerHTML = `
+                <div class="message-avatar">
+                    <img src="assets/icons/chat-avatar.jpg" alt="Bot">
+                </div>
+                <div class="message-content">
+                    <p>${data.sms || `พบอสังหาริมทรัพย์ทั้งหมด ${properties.length} รายการ`}</p>
+                    <div class="rich-content-container">
+                        ${processRichContent(richContent)}
+                    </div>
+                </div>
+            `;
+
+            // เพิ่มลงใน DOM
+            elements.chatMessages.appendChild(messageElement);
+
+            // เพิ่ม Event Listeners สำหรับองค์ประกอบแบบโต้ตอบ
+            addInteractiveListeners(messageElement);
+
+            // เลื่อนไปที่ข้อความล่าสุด
+            scrollToBottom();
+
+            // บันทึกข้อมูลลง localStorage
+            saveChatToLocalStorage();
+
+            // รีเซ็ต step เพื่อพร้อมสำหรับการค้นหาใหม่
+            chatState.currentStep = 1;
+
+            // เพิ่มตัวเลือกหลังการค้นหา
+            setTimeout(() => {
+                    const askMorePayload = {
+                        richContent: [
+                            [
+                                {
+                                    type: "chips",
+                                    options: [
+                                        {
+                                            text: "ค้นหาใหม่"
+                                        },
+                                        {
+                                            text: "ดูข้อมูลเพิ่มเติม"
+                                        },
+                                        {
+                                            text: "ติดต่อตัวแทนขาย"
+                                        }
+                                    ]
+                                }
+                            ]
+                        ]
+                    };
+
+                    // สร้าง message element
+                    const askMoreId = Date.now() + 100;
+                    const askMoreElement = document.createElement('div');
+                    askMoreElement.className = 'message bot-message';
+                    askMoreElement.setAttribute('data-message-id', askMoreId);
+                    askMoreElement.innerHTML = `
+                        <div class="message-avatar">
+                            <img src="assets/icons/chat-avatar.jpg" alt="Bot">
+                        </div>
+                        <div class="message-content">
+                            <p>คุณสนใจข้อมูลเพิ่มเติมหรือต้องการค้นหาใหม่ไหมคะ?</p>
+                            <div class="rich-content-container">
+                                ${processRichContent(askMorePayload)}
+                            </div>
+                        </div>
+                    `;
+
+                    // เพิ่มลงใน DOM
+                    elements.chatMessages.appendChild(askMoreElement);
+
+                    // เพิ่ม Event Listeners สำหรับองค์ประกอบแบบโต้ตอบ
+                    addInteractiveListeners(askMoreElement);
+
+                    // เลื่อนไปที่ข้อความล่าสุด
+                    scrollToBottom();
+
+                    // บันทึกข้อมูลลง localStorage
+                    saveChatToLocalStorage();
+                }, 1000);
+        }
 
 
     // แปลงประเภทอสังหาริมทรัพย์เป็นรหัส

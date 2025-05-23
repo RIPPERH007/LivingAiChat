@@ -1012,7 +1012,7 @@
         }
 
         /* Success/Error Messages */
-        .message {
+        .message-dialog {
             padding: 12px 16px;
             border-radius: 6px;
             margin-bottom: 16px;
@@ -1022,19 +1022,19 @@
             font-size: 14px;
         }
 
-        .message.success {
+        .message-dialog.success {
             background-color: #d4edda;
             color: #155724;
             border: 1px solid #c3e6cb;
         }
 
-        .message.error {
+        .message-dialog.error {
             background-color: #f8d7da;
             color: #721c24;
             border: 1px solid #f5c6cb;
         }
 
-        .message.show {
+        .message-dialog.show {
             display: flex;
         }
 
@@ -1184,11 +1184,11 @@
         <!-- Dialog Content -->
         <div class="dialog-content">
             <!-- Success/Error Messages -->
-            <div class="message success" id="successMessage">
+            <div class="message-dialog success" id="successMessage">
                 <i class="fas fa-check-circle"></i>
                 <span>บันทึกการตั้งค่าเรียบร้อยแล้ว</span>
             </div>
-            <div class="message error" id="errorMessage">
+            <div class="message-dialog error" id="errorMessage">
                 <i class="fas fa-exclamation-circle"></i>
                 <span>เกิดข้อผิดพลาดในการบันทึก กรุณาลองใหม่อีกครั้ง</span>
             </div>
@@ -1238,7 +1238,8 @@
                             class="form-input form-textarea"
                             id="greetingMessage"
                             placeholder="กรอกข้อความต้อนรับสำหรับลูกค้า เช่น สวัสดีครับ ยินดีให้บริการ..."
-                            maxlength="500"
+                            maxlength="2555"
+                            rows="4"
                             required
                     ></textarea>
                     <small style="color: var(--text-light); font-size: 12px;">
@@ -1277,7 +1278,8 @@
         socket: null,
         adminInfo: {
             id: 'admin1',
-            name: 'แอดมิน'
+            name: 'แอดมินโอม',
+            image:'https://png.pngtree.com/png-vector/20230316/ourmid/pngtree-admin-and-customer-service-job-vacancies-vector-png-image_6650726.png'
         },
         adminActive: false,
         currentWebId: '001', // Web ID สำหรับใช้กับ API
@@ -1821,6 +1823,7 @@ function openChatSession(sessionId) {
                 room: adminState.currentSessionId,
                 adminId: adminState.adminInfo.id,
                 adminName: adminState.adminInfo.name,
+                adminImage: adminState.adminInfo.image,
                 sessionId: adminState.currentSessionId, // เพิ่ม sessionId
                 platform: 'ownweb'
             });
@@ -2159,6 +2162,7 @@ function closeChatPanel() {
                 room: adminState.currentSessionId,
                 adminId: adminState.adminInfo.id,
                 adminName: adminState.adminInfo.name,
+                adminImage: adminState.adminInfo.image,
                 sessionId: adminState.currentSessionId, // เพิ่ม sessionId
                 platform: 'ownweb'
             });
@@ -2203,6 +2207,7 @@ function handlePageUnload() {
             room: adminState.currentSessionId,
             adminId: adminState.adminInfo.id,
             adminName: adminState.adminInfo.name,
+                adminImage: adminState.adminInfo.image,
                 sessionId: adminState.currentSessionId, // เพิ่ม sessionId
                 platform: 'ownweb',
         });
@@ -2323,6 +2328,7 @@ function toggleAdminStatus() {
                 room: adminState.currentSessionId,
                 adminId: adminState.adminInfo.id,
                 adminName: adminState.adminInfo.name,
+                adminImage: adminState.adminInfo.image,
                 sessionId: adminState.currentSessionId, // เพิ่ม sessionId
                 platform: 'ownweb',
             });
@@ -3033,7 +3039,7 @@ document.addEventListener('DOMContentLoaded', init);
 
                 // เพิ่มไฟล์รูปภาพ (ถ้ามี)
                 if (profileImageFile) {
-                    formData.append('bot_image', profileImageFile);
+                    formData.append('bot_photo', profileImageFile);
                 }
 
                 const response = await fetch(`${apiBaseUrl}/chat/greeting`, {
