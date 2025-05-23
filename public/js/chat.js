@@ -1211,6 +1211,64 @@
         addMessage('bot', messageText, '', null, chipsItem.options);
 
     }
+    function showContactFormMessage() {
+        const messageId = Date.now();
+        const messageElement = document.createElement('div');
+        messageElement.className = 'message bot-message';
+        messageElement.setAttribute('data-message-id', messageId);
+
+        messageElement.innerHTML = `
+            <div class="message-avatar">
+                <img src="assets/icons/chat-avatar.jpg" alt="Bot">
+            </div>
+            <div class="message-content contact-form-content">
+                <p>🙏 ขออภัย ฉันไม่สามารถตอบคำถามดังกล่าวได้ในขณะนี้ หากคุณต้องการให้ตัวแทนติดต่อกลับ โปรดฝากข้อมูลติดต่อของคุณไว้ และทีมงานของเราจะติดต่อกลับหาคุณโดยเร็วที่สุด</p>
+
+                <form class="contact-form">
+                    <label>เบอร์ <span style="color: red;">*</span></label>
+                    <input type="tel" name="tel" required placeholder="088-888-8888" />
+
+                    <label>อีเมล</label>
+                    <input type="email" name="email" placeholder="example@myproperty.com" />
+
+                    <label>เวลาที่ต้องการ</label>
+                    <select name="preferredTime">
+                        <option>เวลาใดก็ได้</option>
+                        <option>ช่วงเช้า(09.00-12.00)</option>
+                        <option>ช่วงบ่าย(13.00-15.00)</option>
+                        <option>ช่วงเย็น(16.00-18.00)</option>
+                    </select>
+
+                    <button type="submit" class="send-button">ส่งข้อมูลติดต่อ</button>
+                </form>
+            </div>
+        `;
+
+        // เพิ่มลง DOM
+        elements.chatMessages.appendChild(messageElement);
+
+        // เพิ่มการ scroll ลงล่าง
+        scrollToBottom();
+
+        // เพิ่ม event handler ถ้าต้องการ submit form
+        const form = messageElement.querySelector('.contact-form');
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+
+            const tel = form.tel.value.trim();
+            const email = form.email.value.trim();
+            const preferredTime = form.preferredTime.value;
+
+            if (!tel) {
+                alert("กรุณากรอกเบอร์โทรศัพท์");
+                return;
+            }
+
+            console.log("🟢 ส่งข้อมูลติดต่อ:", { tel, email, preferredTime });
+
+            form.innerHTML = `<p style="color:green;">✅ ขอบคุณค่ะ! เจ้าหน้าที่จะติดต่อคุณโดยเร็วที่สุด</p>`;
+        });
+    }
     function showTransactionTypeOptions() {
         if (!shouldBotRespond()) {
                 console.log('แอดมินกำลังเปิดใช้งานอยู่ บอทจะไม่แสดงตัวเลือกประเภทธุรกรรม');
@@ -2003,6 +2061,8 @@
 
             if (lowerMessage.includes('ติดต่อเจ้าหน้าที่')) {
                 contactAdmin();
+                showContactFormMessage();
+
                 return;
             }
 
@@ -2136,6 +2196,9 @@
 // ฟังก์ชันติดต่อเจ้าหน้าที่ (Call Center)
 async function contactAdmin() {
     try {
+
+
+
         console.log('ผู้ใช้ต้องการติดต่อเจ้าหน้าที่');
 
         // แสดงข้อความกำลังดำเนินการ
@@ -2170,6 +2233,7 @@ async function contactAdmin() {
 
             // แสดงข้อความและตัวเลือก
             addMessage('bot', successMessage, '', null, followUpOptions.options);
+//            showContactFormMessage();
 
             // เพิ่มข้อความระบบแจ้งเตือน
             addSystemMessage('กำลังเชื่อมต่อกับเจ้าหน้าที่');
@@ -2189,10 +2253,6 @@ async function contactAdmin() {
                 ]
             };
 
-            // แสดงตัวเลือกหลังข้อความผิดพลาด
-            setTimeout(() => {
-                addMessage('bot', 'คุณต้องการทำอย่างไรต่อไป?', '', null, errorOptions.options);
-            }, 1000);
 
             return false;
         }
@@ -2205,6 +2265,7 @@ async function contactAdmin() {
 
         return false;
     }
+
 }
     // ค้นหาอสังหาริมทรัพย์
     async function searchProperties() {

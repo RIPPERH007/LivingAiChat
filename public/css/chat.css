@@ -928,6 +928,42 @@ body {
 .bot-message .message-content .li-property-card {
   margin: 8px 0;
 }
+
+.contact-form-content p {
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.contact-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.contact-form input,
+.contact-form select {
+  padding: 8px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  width: 100%;
+}
+
+.send-button {
+  background-color: #5e2ced;
+  color: white;
+  border: none;
+  padding: 10px;
+  font-size: 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.send-button:hover {
+  background-color: #4b20c8;
+}
+
 /* Animation */
 @keyframes pulse {
     0% {
