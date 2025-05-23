@@ -103,7 +103,7 @@ exports.handleWebhook = async (req, res) => {
   if (shouldSearch) {
     try {
       // สร้าง URL สำหรับเรียก API
-      let apiUrl = 'https://ownwebdev1.livinginsider.com/api/v1/test_order';
+      let apiUrl = 'https://ownwebdev.livinginsider.com/api/v1/test_order';
 
       // เพิ่มพารามิเตอร์ต่างๆ
       const params = new URLSearchParams();

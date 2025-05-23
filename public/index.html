@@ -55,7 +55,7 @@
                     <img src="assets/icons/chat-avatar.jpg" alt="Bot">
                 </div>
                 <div class="message-content welcome-message">
-                    <p>👋 สวัสดีค่ะ ฉันคือผู้ช่วยอัจฉริยะของ My Property พร้อมช่วยคุณค้นหา ซื้อ ขาย หรือเช่าอสังหาฯ แบบง่าย ๆ สนใจเรื่องไหน ถามกับฉันได้เลย!</p>
+                    <p id="greeting-message">👋 สวัสดีค่ะ ฉันคือผู้ช่วยอัจฉริยะของ My Property พร้อมช่วยคุณค้นหา ซื้อ ขาย หรือเช่าอสังหาฯ แบบง่าย ๆ สนใจเรื่องไหน ถามกับฉันได้เลย!</p>
 
                     <div class="chips-container">
                         <div class="chip" data-text="ต้องการหาซื้อ">ต้องการหาซื้อ</div>
@@ -90,14 +90,16 @@
 
 <!-- ตรวจสอบการโหลด -->
 <script>
-    window.addEventListener('load', function() {
-        console.log('=== Checking PieSocket v5 ===');
-        console.log('PieSocket:', typeof PieSocket);
-        console.log('PieSocket object:', PieSocket);
-        if (PieSocket) {
-            console.log('PieSocket methods:', Object.getOwnPropertyNames(PieSocket));
-        }
-    });
+
+
+        window.addEventListener('load', function() {
+            console.log('=== Checking PieSocket v5 ===');
+            console.log('PieSocket:', typeof PieSocket);
+            console.log('PieSocket object:', PieSocket);
+            if (PieSocket) {
+                console.log('PieSocket methods:', Object.getOwnPropertyNames(PieSocket));
+            }
+        });
 </script>
 
 <!-- โค้ด JavaScript ของเรา -->
